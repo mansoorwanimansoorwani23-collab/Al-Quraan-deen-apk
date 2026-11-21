@@ -489,6 +489,13 @@ fun SettingsScreen(
                                 )
                             }
                         }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Best for Text: 3.1 Flash (टेक्स्ट के लिए सबसे बेस्ट मॉडल 3.1 Flash है)",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                         Spacer(modifier = Modifier.height(6.dp))
 
                         if (textGenerationModels.isEmpty()) {
@@ -573,6 +580,13 @@ fun SettingsScreen(
                                 color = MaterialTheme.colorScheme.secondary
                             )
                         }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Best for Voice: 3.8 Flash (वॉइस के लिए 3.8 Flash अच्छा है)",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
                         Spacer(modifier = Modifier.height(6.dp))
 
                         if (audioReadModels.isEmpty()) {
@@ -636,7 +650,7 @@ fun SettingsScreen(
                         }
 
                         Spacer(modifier = Modifier.height(10.dp))
-                        Text("Preferred Audio Voice:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Preferred Audio Voice (Male / Female):", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(modifier = Modifier.height(6.dp))
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(GeminiAiService.AVAILABLE_VOICES) { (voice, desc) ->

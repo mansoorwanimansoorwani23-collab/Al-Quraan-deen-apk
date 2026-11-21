@@ -38,7 +38,9 @@ import com.example.notification.PrayerAlarmScheduler
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -195,8 +197,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _aiAudioStatusMessage = MutableStateFlow<String?>(null)
     val aiAudioStatusMessage: StateFlow<String?> = _aiAudioStatusMessage.asStateFlow()
 
+    private val _activePlayingMessageId = MutableStateFlow<String?>(null)
+    val activePlayingMessageId: StateFlow<String?> = _activePlayingMessageId.asStateFlow()
+
+    private var aiTextJob: Job? = null
+    private var aiAudioJob: Job? = null
+
     private var fallbackTts: TextToSpeech? = null
+    @Volatile
     private var isFallbackTtsReady = false
+    @Volatile
+    private var pendingFallbackSpeakText: String? = null
 
     init {
         val dailyAyahItem = IslamicDataSource.AYAHS_BY_SURAH[2]?.find { it.numberInSurah == 255 }
@@ -716,7 +727,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun saveGeminiApiKeyAndFetchModels(apiKey: String) {
+    fun saveGeminiApiKeyAndFetchModels(
+        apiKey: String,
+        onCompleted: ((Boolean) -> Unit)? = null
+    ) {
         val trimmed = apiKey.trim()
         viewModelScope.launch {
             preferencesRepository.updateGeminiApiKey(trimmed)
@@ -724,26 +738,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _availableGeminiModels.value = emptyList()
                 _geminiModelFetchError.value = null
                 preferencesRepository.updateCachedGeminiModelsJson("")
+                onCompleted?.invoke(false)
             } else {
-                fetchGeminiModelsInternal(trimmed)
+                val ok = fetchGeminiModelsInternal(trimmed)
+                onCompleted?.invoke(ok)
             }
         }
     }
 
-    fun refreshGeminiModels() {
+    fun refreshGeminiModels(onCompleted: ((Boolean) -> Unit)? = null) {
         val key = userSettings.value.geminiApiKey
         if (key.isBlank()) {
             _geminiModelFetchError.value = "Enter your Gemini API key first."
+            onCompleted?.invoke(false)
             return
         }
         viewModelScope.launch {
-            fetchGeminiModelsInternal(key)
+            val ok = fetchGeminiModelsInternal(key)
+            onCompleted?.invoke(ok)
         }
     }
 
-    private suspend fun fetchGeminiModelsInternal(apiKey: String) {
+    private suspend fun fetchGeminiModelsInternal(apiKey: String): Boolean {
         _isFetchingGeminiModels.value = true
         _geminiModelFetchError.value = null
+        var succeeded = false
         when (val result = GeminiAiService.fetchAvailableModels(apiKey)) {
             is GeminiModelsFetchResult.Success -> {
                 _availableGeminiModels.value = result.models
@@ -759,12 +778,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (audioModels.isNotEmpty() && audioModels.none { it.id == currentSettings.selectedGeminiAudioModel }) {
                     preferencesRepository.updateSelectedGeminiAudioModel(audioModels.first().id)
                 }
+                succeeded = true
             }
             is GeminiModelsFetchResult.Error -> {
                 _geminiModelFetchError.value = result.message
             }
         }
         _isFetchingGeminiModels.value = false
+        return succeeded
+    }
+
+    fun applyAiSetupSelections(
+        textModelId: String,
+        audioModelId: String,
+        voiceName: String
+    ) {
+        viewModelScope.launch {
+            if (textModelId.isNotBlank()) {
+                preferencesRepository.updateSelectedGeminiTextModel(textModelId)
+            }
+            if (audioModelId.isNotBlank()) {
+                preferencesRepository.updateSelectedGeminiAudioModel(audioModelId)
+            }
+            if (voiceName.isNotBlank()) {
+                preferencesRepository.updateSelectedGeminiVoice(voiceName)
+            }
+        }
     }
 
     fun selectGeminiTextModel(modelId: String) {
@@ -795,94 +834,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun sendAiChatPrompt(prompt: String) {
-        val cleanPrompt = prompt.trim()
-        if (cleanPrompt.isBlank()) return
-        val settings = userSettings.value
-        val apiKey = settings.geminiApiKey
-        val textModel = settings.selectedGeminiTextModel.ifBlank {
-            _availableGeminiModels.value.firstOrNull { it.category == GeminiModelCategory.TEXT_GENERATION }?.id.orEmpty()
+    /**
+     * Pre-warms HTTP/2 TLS socket to Gemini API and pre-initializes on-device TTS engine
+     * so first text token and first spoken word arrive noticeably faster.
+     */
+    fun warmUpAiNetwork() {
+        viewModelScope.launch(Dispatchers.IO) {
+            GeminiAiService.warmUpConnection()
         }
-
-        val userMsg = AiChatMessage(
-            id = "u_${System.currentTimeMillis()}",
-            isUser = true,
-            text = cleanPrompt
-        )
-        val historyBefore = _aiChatMessages.value
-        _aiChatMessages.value = historyBefore + userMsg
-        _isAiGeneratingText.value = true
-
-        viewModelScope.launch {
-            when (val res = GeminiAiService.generateText(apiKey, textModel, cleanPrompt, historyBefore)) {
-                is GeminiTextResult.Success -> {
-                    _aiChatMessages.value = _aiChatMessages.value + AiChatMessage(
-                        id = "a_${System.currentTimeMillis()}",
-                        isUser = false,
-                        text = res.text,
-                        modelUsed = res.modelId
-                    )
-                }
-                is GeminiTextResult.Error -> {
-                    _aiChatMessages.value = _aiChatMessages.value + AiChatMessage(
-                        id = "e_${System.currentTimeMillis()}",
-                        isUser = false,
-                        text = "Error: ${res.message}",
-                        modelUsed = textModel
-                    )
-                }
-            }
-            _isAiGeneratingText.value = false
-        }
+        ensureFallbackTtsPrewarmed()
     }
 
-    fun clearAiChat() {
-        _aiChatMessages.value = emptyList()
-    }
-
-    fun readTextWithGeminiAudio(textToRead: String) {
-        val cleanText = textToRead.trim()
-        if (cleanText.isBlank()) return
-
-        stopAiAudioPlayback()
-        val settings = userSettings.value
-        val apiKey = settings.geminiApiKey
-        val audioModel = settings.selectedGeminiAudioModel.ifBlank {
-            _availableGeminiModels.value.firstOrNull { it.category == GeminiModelCategory.AUDIO_READ }?.id.orEmpty()
-        }
-        val voice = settings.selectedGeminiVoice
-
-        _isAiGeneratingAudio.value = true
-        _aiAudioStatusMessage.value = "Preparing AI Audio Read ($audioModel)..."
-
-        viewModelScope.launch {
-            when (val res = GeminiAiService.generateAudioRead(apiKey, audioModel, cleanText, voice)) {
-                is GeminiAudioResult.NativePcmAudio -> {
-                    _isAiGeneratingAudio.value = false
-                    _isAiAudioPlaying.value = true
-                    _aiAudioStatusMessage.value = "Playing Gemini Audio (${res.modelId} • $voice)"
-                    GeminiAiService.playPcmAudio(res.pcmBytes, res.sampleRateHz) {
-                        _isAiAudioPlaying.value = false
-                        _aiAudioStatusMessage.value = null
-                    }
-                }
-                is GeminiAudioResult.FallbackToDeviceTts -> {
-                    _isAiGeneratingAudio.value = false
-                    _aiAudioStatusMessage.value = res.note
-                    speakWithDeviceTts(res.textToSpeak)
-                }
-                is GeminiAudioResult.Error -> {
-                    _isAiGeneratingAudio.value = false
-                    _isAiAudioPlaying.value = false
-                    _aiAudioStatusMessage.value = res.message
-                }
-            }
-        }
-    }
-
-    private fun speakWithDeviceTts(text: String) {
+    private fun ensureFallbackTtsPrewarmed() {
+        if (fallbackTts != null) return
         val app = getApplication<Application>()
-        if (fallbackTts == null) {
+        runCatching {
             fallbackTts = TextToSpeech(app) { status ->
                 isFallbackTtsReady = status == TextToSpeech.SUCCESS
                 if (isFallbackTtsReady) {
@@ -892,33 +858,231 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                         override fun onDone(utteranceId: String?) {
                             _isAiAudioPlaying.value = false
+                            _activePlayingMessageId.value = null
+                            _aiAudioStatusMessage.value = null
                         }
                         @Deprecated("Deprecated in Java")
                         override fun onError(utteranceId: String?) {
                             _isAiAudioPlaying.value = false
+                            _activePlayingMessageId.value = null
                         }
                     })
-                    fallbackTts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "hidayah_ai_tts")
+                    val queued = pendingFallbackSpeakText
+                    pendingFallbackSpeakText = null
+                    if (!queued.isNullOrBlank()) {
+                        _isAiAudioPlaying.value = true
+                        fallbackTts?.speak(queued, TextToSpeech.QUEUE_FLUSH, null, "hidayah_ai_tts")
+                    }
                 }
             }
+        }
+    }
+
+    fun sendAiChatPrompt(prompt: String) {
+        val cleanPrompt = prompt.trim()
+        if (cleanPrompt.isBlank()) return
+
+        // Cancel any previous in-flight text generation cleanly
+        stopAiTextGeneration()
+
+        val settings = userSettings.value
+        val apiKey = settings.geminiApiKey
+        val textModel = settings.selectedGeminiTextModel.ifBlank {
+            _availableGeminiModels.value.firstOrNull { it.category == GeminiModelCategory.TEXT_GENERATION }?.id.orEmpty()
+        }
+
+        val now = System.currentTimeMillis()
+        val userMsg = AiChatMessage(
+            id = "u_$now",
+            isUser = true,
+            text = cleanPrompt
+        )
+        val assistantMsgId = "a_${now + 1}"
+        val streamingPlaceholder = AiChatMessage(
+            id = assistantMsgId,
+            isUser = false,
+            text = "",
+            modelUsed = textModel,
+            isStreaming = true
+        )
+
+        val historyBefore = _aiChatMessages.value
+        _aiChatMessages.value = historyBefore + userMsg + streamingPlaceholder
+        _isAiGeneratingText.value = true
+
+        aiTextJob = viewModelScope.launch {
+            try {
+                val res = GeminiAiService.generateTextStreaming(
+                    apiKey = apiKey,
+                    modelId = textModel,
+                    userPrompt = cleanPrompt,
+                    recentHistory = historyBefore,
+                    onPartialText = { partial ->
+                        updateChatMessage(assistantMsgId) { msg ->
+                            msg.copy(text = partial, isStreaming = true)
+                        }
+                    }
+                )
+                when (res) {
+                    is GeminiTextResult.Success -> {
+                        updateChatMessage(assistantMsgId) { msg ->
+                            msg.copy(
+                                text = res.text,
+                                modelUsed = res.modelId,
+                                isStreaming = false
+                            )
+                        }
+                    }
+                    is GeminiTextResult.Error -> {
+                        updateChatMessage(assistantMsgId) { msg ->
+                            msg.copy(
+                                text = if (msg.text.isNotBlank()) msg.text else "Error: ${res.message}",
+                                modelUsed = textModel,
+                                isStreaming = false
+                            )
+                        }
+                    }
+                }
+            } catch (_: CancellationException) {
+                // Keep whatever partial response arrived so far, or remove empty bubble
+                _aiChatMessages.update { list ->
+                    list.mapNotNull { msg ->
+                        if (msg.id == assistantMsgId) {
+                            if (msg.text.isBlank()) null else msg.copy(isStreaming = false)
+                        } else msg
+                    }
+                }
+            } finally {
+                _isAiGeneratingText.value = false
+            }
+        }
+    }
+
+    private fun updateChatMessage(id: String, transform: (AiChatMessage) -> AiChatMessage) {
+        _aiChatMessages.update { list ->
+            val idx = list.indexOfLast { it.id == id }
+            if (idx < 0) list
+            else list.toMutableList().apply { this[idx] = transform(this[idx]) }
+        }
+    }
+
+    fun stopAiTextGeneration() {
+        GeminiAiService.cancelActiveTextGeneration()
+        aiTextJob?.cancel()
+        aiTextJob = null
+        _isAiGeneratingText.value = false
+        _aiChatMessages.update { list ->
+            list.map { if (it.isStreaming) it.copy(isStreaming = false) else it }
+        }
+    }
+
+    fun clearAiChat() {
+        stopAiTextGeneration()
+        stopAiAudioPlayback()
+        _aiChatMessages.value = emptyList()
+    }
+
+    fun readTextWithGeminiAudio(textToRead: String, messageId: String? = null) {
+        val cleanText = textToRead.trim()
+        if (cleanText.isBlank()) return
+
+        // Tapping the same currently playing/loading message stops playback
+        if (messageId != null &&
+            _activePlayingMessageId.value == messageId &&
+            (_isAiAudioPlaying.value || _isAiGeneratingAudio.value)
+        ) {
+            stopAiAudioPlayback()
+            return
+        }
+
+        stopAiAudioPlayback()
+        ensureFallbackTtsPrewarmed()
+
+        val settings = userSettings.value
+        val apiKey = settings.geminiApiKey
+        val allAudioModels = _availableGeminiModels.value.filter { it.category == GeminiModelCategory.AUDIO_READ }
+        val audioModel = settings.selectedGeminiAudioModel.ifBlank {
+            allAudioModels.firstOrNull()?.id.orEmpty()
+        }
+        val dedicatedTtsFallback = allAudioModels.firstOrNull {
+            val l = it.id.lowercase()
+            l.contains("tts") || l.contains("native-audio")
+        }?.id
+        val voice = settings.selectedGeminiVoice
+
+        _activePlayingMessageId.value = messageId
+        _isAiGeneratingAudio.value = true
+        _aiAudioStatusMessage.value = "Loading voice ($voice)..."
+
+        aiAudioJob = viewModelScope.launch {
+            try {
+                GeminiAiService.streamAndPlayAudioRead(
+                    apiKey = apiKey,
+                    modelId = audioModel,
+                    fallbackTtsModelId = dedicatedTtsFallback,
+                    textToRead = cleanText,
+                    voiceName = voice,
+                    onStatusUpdate = { status ->
+                        _aiAudioStatusMessage.value = status
+                    },
+                    onPlaybackStarted = { activeModel ->
+                        _isAiGeneratingAudio.value = false
+                        _isAiAudioPlaying.value = true
+                        _aiAudioStatusMessage.value = "Playing ($voice • $activeModel)"
+                    },
+                    onFallbackToDeviceTts = { cleanSpeech, note ->
+                        _isAiGeneratingAudio.value = false
+                        _aiAudioStatusMessage.value = note
+                        speakWithDeviceTts(cleanSpeech)
+                    },
+                    onError = { err ->
+                        _isAiGeneratingAudio.value = false
+                        _isAiAudioPlaying.value = false
+                        _activePlayingMessageId.value = null
+                        _aiAudioStatusMessage.value = err
+                    },
+                    onComplete = {
+                        _isAiGeneratingAudio.value = false
+                        _isAiAudioPlaying.value = false
+                        _activePlayingMessageId.value = null
+                        _aiAudioStatusMessage.value = null
+                    }
+                )
+            } catch (_: CancellationException) {
+                // Cleanly canceled by user
+            }
+        }
+    }
+
+    private fun speakWithDeviceTts(text: String) {
+        if (fallbackTts == null) {
+            pendingFallbackSpeakText = text
+            ensureFallbackTtsPrewarmed()
         } else if (isFallbackTtsReady) {
             _isAiAudioPlaying.value = true
             fallbackTts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "hidayah_ai_tts")
+        } else {
+            pendingFallbackSpeakText = text
         }
     }
 
     fun stopAiAudioPlayback() {
+        pendingFallbackSpeakText = null
+        aiAudioJob?.cancel()
+        aiAudioJob = null
         GeminiAiService.stopPcmAudio()
         runCatching { fallbackTts?.stop() }
         _isAiGeneratingAudio.value = false
         _isAiAudioPlaying.value = false
+        _activePlayingMessageId.value = null
         _aiAudioStatusMessage.value = null
     }
 
     override fun onCleared() {
         super.onCleared()
+        stopAiTextGeneration()
+        stopAiAudioPlayback()
         quranAudioPlayerManager.release()
-        GeminiAiService.stopPcmAudio()
         runCatching { fallbackTts?.shutdown() }
     }
 }

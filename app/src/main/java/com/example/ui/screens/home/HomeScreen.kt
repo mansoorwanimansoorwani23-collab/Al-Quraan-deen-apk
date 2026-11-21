@@ -36,6 +36,7 @@ import com.example.ui.components.IslamicBannerCard
 import com.example.ui.components.LiquidGlassCard
 import com.example.ui.components.MakkahMadinahLiveCard
 import com.example.ui.components.SectionHeader
+import com.example.ui.components.rememberLiquidGlassPalette
 import com.example.ui.navigation.DiscoverTab
 import com.example.ui.navigation.Screen
 import com.example.ui.theme.*
@@ -521,7 +522,8 @@ private fun QuickActionGrid(
             Triple("Ramadan", Icons.Filled.NightsStay) { onNavigateToDiscoverTab(DiscoverTab.RAMADAN) }
         )
 
-        val isDark = LocalAppThemeMode.current.isDark
+        val palette = rememberLiquidGlassPalette()
+        val tileBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding = PaddingValues(horizontal = 2.dp)
@@ -529,23 +531,15 @@ private fun QuickActionGrid(
             items(actions) { (title, icon, action) ->
                 Surface(
                     modifier = Modifier
-                        .width(94.dp)
+                        .width(98.dp)
                         .height(94.dp)
                         .clip(RoundedCornerShape(20.dp))
                         .clickable { action() }
                         .testTag("quick_action_${title.replace(" ", "_").lowercase()}"),
                     shape = RoundedCornerShape(20.dp),
-                    color = if (isDark) Color(0xFF101D29).copy(alpha = 0.68f) else Color.White.copy(alpha = 0.72f),
-                    border = BorderStroke(
-                        1.dp,
-                        Brush.linearGradient(
-                            colors = listOf(
-                                Color.White.copy(alpha = if (isDark) 0.30f else 0.95f),
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
-                            )
-                        )
-                    ),
-                    shadowElevation = if (isDark) 4.dp else 2.dp
+                    color = palette.surfaceFill,
+                    border = BorderStroke(1.dp, tileBorderColor),
+                    shadowElevation = 0.dp
                 ) {
                     Column(
                         modifier = Modifier
@@ -556,7 +550,7 @@ private fun QuickActionGrid(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(38.dp)
+                                .size(40.dp)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.primaryContainer),
                             contentAlignment = Alignment.Center
@@ -565,14 +559,15 @@ private fun QuickActionGrid(
                                 imageVector = icon,
                                 contentDescription = title,
                                 tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(21.dp)
                             )
                         }
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(7.dp))
                         Text(
                             text = title,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
                             textAlign = TextAlign.Center,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis

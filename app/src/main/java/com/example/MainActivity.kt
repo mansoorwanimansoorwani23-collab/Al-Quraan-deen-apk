@@ -10,7 +10,6 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -287,8 +286,8 @@ fun HidayahMainApp(viewModel: MainViewModel) {
                     AnimatedContent(
                         targetState = currentScreen,
                         transitionSpec = {
-                            (fadeIn(animationSpec = tween(220)) + scaleIn(initialScale = 0.98f, animationSpec = tween(220))) togetherWith
-                                fadeOut(animationSpec = tween(160))
+                            fadeIn(animationSpec = tween(170)) togetherWith
+                                fadeOut(animationSpec = tween(110))
                         },
                         label = "screen_navigation"
                     ) { screenRoute ->

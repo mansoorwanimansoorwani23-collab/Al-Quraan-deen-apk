@@ -1,23 +1,15 @@
 package com.example.ui.components
 
-import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -37,8 +29,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -67,88 +59,88 @@ fun rememberLiquidGlassPalette(): LiquidGlassPalette {
     return remember(mode, cs) {
         when (mode) {
             AppThemeMode.LIQUID_GLASS_DARK -> LiquidGlassPalette(
-                surfaceFill = Color(0xFF0E1824).copy(alpha = 0.62f),
-                elevatedFill = Color(0xFF132232).copy(alpha = 0.78f),
-                dockFill = Color(0xFF0C1520).copy(alpha = 0.80f),
-                drawerFill = Color(0xFF09121C).copy(alpha = 0.90f),
-                topSheen = Color.White.copy(alpha = 0.14f),
-                bottomSheen = cs.secondary.copy(alpha = 0.06f),
-                rimTopLeft = Color.White.copy(alpha = 0.42f),
-                rimMid = cs.primary.copy(alpha = 0.34f),
-                rimBottomRight = Color.White.copy(alpha = 0.14f),
+                surfaceFill = Color(0xFF101C28).copy(alpha = 0.80f),
+                elevatedFill = Color(0xFF142434).copy(alpha = 0.92f),
+                dockFill = Color(0xFF0E1A26).copy(alpha = 0.90f),
+                drawerFill = Color(0xFF0B1520).copy(alpha = 0.95f),
+                topSheen = Color.White.copy(alpha = 0.10f),
+                bottomSheen = cs.secondary.copy(alpha = 0.04f),
+                rimTopLeft = Color.White.copy(alpha = 0.34f),
+                rimMid = cs.primary.copy(alpha = 0.30f),
+                rimBottomRight = Color.White.copy(alpha = 0.12f),
                 activeLensFill = Color.White.copy(alpha = 0.14f),
-                activeLensGlow = cs.primary.copy(alpha = 0.24f),
-                shadowElevation = 10.dp
+                activeLensGlow = cs.primary.copy(alpha = 0.22f),
+                shadowElevation = 0.dp
             )
             AppThemeMode.LIQUID_GLASS_LIGHT -> LiquidGlassPalette(
-                surfaceFill = Color(0xFFFFFFFF).copy(alpha = 0.68f),
-                elevatedFill = Color(0xFFFFFFFF).copy(alpha = 0.84f),
-                dockFill = Color(0xFFFBFEFF).copy(alpha = 0.80f),
-                drawerFill = Color(0xFFF6FBFE).copy(alpha = 0.92f),
-                topSheen = Color.White.copy(alpha = 0.82f),
-                bottomSheen = cs.secondary.copy(alpha = 0.05f),
+                surfaceFill = Color(0xFFFFFFFF).copy(alpha = 0.84f),
+                elevatedFill = Color(0xFFFFFFFF).copy(alpha = 0.94f),
+                dockFill = Color(0xFFFBFEFF).copy(alpha = 0.92f),
+                drawerFill = Color(0xFFF6FBFE).copy(alpha = 0.96f),
+                topSheen = Color.White.copy(alpha = 0.65f),
+                bottomSheen = cs.secondary.copy(alpha = 0.04f),
                 rimTopLeft = Color.White.copy(alpha = 0.98f),
-                rimMid = cs.primary.copy(alpha = 0.26f),
-                rimBottomRight = Color.White.copy(alpha = 0.60f),
+                rimMid = cs.primary.copy(alpha = 0.24f),
+                rimBottomRight = Color.White.copy(alpha = 0.65f),
                 activeLensFill = cs.primary.copy(alpha = 0.14f),
-                activeLensGlow = Color.White.copy(alpha = 0.65f),
-                shadowElevation = 6.dp
+                activeLensGlow = cs.primary.copy(alpha = 0.16f),
+                shadowElevation = 0.dp
             )
             AppThemeMode.AURORA_PRISM_GLASS -> LiquidGlassPalette(
-                surfaceFill = Color(0xFF141734).copy(alpha = 0.64f),
-                elevatedFill = Color(0xFF1B1F46).copy(alpha = 0.80f),
-                dockFill = Color(0xFF11142E).copy(alpha = 0.82f),
-                drawerFill = Color(0xFF0E1028).copy(alpha = 0.91f),
-                topSheen = Color.White.copy(alpha = 0.16f),
-                bottomSheen = AuroraOrbPrimary.copy(alpha = 0.10f),
-                rimTopLeft = Color.White.copy(alpha = 0.44f),
-                rimMid = AuroraOrbSecondary.copy(alpha = 0.42f),
-                rimBottomRight = AuroraOrbAccent.copy(alpha = 0.28f),
-                activeLensFill = AuroraOrbPrimary.copy(alpha = 0.24f),
-                activeLensGlow = AuroraOrbSecondary.copy(alpha = 0.24f),
-                shadowElevation = 12.dp
+                surfaceFill = Color(0xFF171A38).copy(alpha = 0.82f),
+                elevatedFill = Color(0xFF1D224A).copy(alpha = 0.93f),
+                dockFill = Color(0xFF131632).copy(alpha = 0.90f),
+                drawerFill = Color(0xFF10122B).copy(alpha = 0.95f),
+                topSheen = Color.White.copy(alpha = 0.12f),
+                bottomSheen = AuroraOrbPrimary.copy(alpha = 0.07f),
+                rimTopLeft = Color.White.copy(alpha = 0.36f),
+                rimMid = AuroraOrbSecondary.copy(alpha = 0.34f),
+                rimBottomRight = AuroraOrbAccent.copy(alpha = 0.22f),
+                activeLensFill = AuroraOrbPrimary.copy(alpha = 0.22f),
+                activeLensGlow = AuroraOrbSecondary.copy(alpha = 0.22f),
+                shadowElevation = 0.dp
             )
             AppThemeMode.ISLAMIC_EMERALD -> LiquidGlassPalette(
-                surfaceFill = Color(0xFFFFFCF6).copy(alpha = 0.78f),
-                elevatedFill = Color(0xFFFFFDF9).copy(alpha = 0.90f),
-                dockFill = Color(0xFFFFFCF3).copy(alpha = 0.84f),
-                drawerFill = Color(0xFFFDF8EC).copy(alpha = 0.93f),
-                topSheen = Color.White.copy(alpha = 0.78f),
-                bottomSheen = GoldAccentLight.copy(alpha = 0.07f),
-                rimTopLeft = GoldAccentLight.copy(alpha = 0.52f),
+                surfaceFill = Color(0xFFFFFDF8).copy(alpha = 0.88f),
+                elevatedFill = Color(0xFFFFFEFB).copy(alpha = 0.95f),
+                dockFill = Color(0xFFFFFCF5).copy(alpha = 0.92f),
+                drawerFill = Color(0xFFFDF9EE).copy(alpha = 0.96f),
+                topSheen = Color.White.copy(alpha = 0.65f),
+                bottomSheen = GoldAccentLight.copy(alpha = 0.05f),
+                rimTopLeft = GoldAccentLight.copy(alpha = 0.44f),
                 rimMid = Color.White.copy(alpha = 0.90f),
-                rimBottomRight = IslamicGreenLight.copy(alpha = 0.30f),
+                rimBottomRight = IslamicGreenLight.copy(alpha = 0.26f),
                 activeLensFill = IslamicGreenLight.copy(alpha = 0.14f),
-                activeLensGlow = GoldAccentLight.copy(alpha = 0.18f),
-                shadowElevation = 6.dp
+                activeLensGlow = IslamicGreenLight.copy(alpha = 0.16f),
+                shadowElevation = 0.dp
             )
             AppThemeMode.ISLAMIC_NIGHT -> LiquidGlassPalette(
-                surfaceFill = Color(0xFF0F2019).copy(alpha = 0.70f),
-                elevatedFill = Color(0xFF152C22).copy(alpha = 0.84f),
-                dockFill = Color(0xFF0C1B14).copy(alpha = 0.84f),
-                drawerFill = Color(0xFF0A1711).copy(alpha = 0.92f),
-                topSheen = GoldAccentDark.copy(alpha = 0.12f),
-                bottomSheen = IslamicGreenDark.copy(alpha = 0.06f),
-                rimTopLeft = GoldAccentDark.copy(alpha = 0.46f),
-                rimMid = Color.White.copy(alpha = 0.22f),
-                rimBottomRight = IslamicGreenDark.copy(alpha = 0.26f),
-                activeLensFill = IslamicGreenDark.copy(alpha = 0.22f),
+                surfaceFill = Color(0xFF11231B).copy(alpha = 0.84f),
+                elevatedFill = Color(0xFF162F24).copy(alpha = 0.93f),
+                dockFill = Color(0xFF0E1F17).copy(alpha = 0.91f),
+                drawerFill = Color(0xFF0B1913).copy(alpha = 0.95f),
+                topSheen = GoldAccentDark.copy(alpha = 0.10f),
+                bottomSheen = IslamicGreenDark.copy(alpha = 0.05f),
+                rimTopLeft = GoldAccentDark.copy(alpha = 0.40f),
+                rimMid = Color.White.copy(alpha = 0.20f),
+                rimBottomRight = IslamicGreenDark.copy(alpha = 0.22f),
+                activeLensFill = IslamicGreenDark.copy(alpha = 0.20f),
                 activeLensGlow = GoldAccentDark.copy(alpha = 0.18f),
-                shadowElevation = 10.dp
+                shadowElevation = 0.dp
             )
             AppThemeMode.MEDINA_PEARL -> LiquidGlassPalette(
-                surfaceFill = Color(0xFFFFFAF7).copy(alpha = 0.76f),
-                elevatedFill = Color(0xFFFFFCFA).copy(alpha = 0.89f),
-                dockFill = Color(0xFFFFF8F5).copy(alpha = 0.84f),
-                drawerFill = Color(0xFFFDF3EE).copy(alpha = 0.93f),
-                topSheen = Color.White.copy(alpha = 0.82f),
-                bottomSheen = MedinaOrbPrimary.copy(alpha = 0.08f),
-                rimTopLeft = Color.White.copy(alpha = 0.96f),
-                rimMid = MedinaOrbPrimary.copy(alpha = 0.36f),
-                rimBottomRight = MedinaSecondary.copy(alpha = 0.24f),
+                surfaceFill = Color(0xFFFFFCFA).copy(alpha = 0.88f),
+                elevatedFill = Color(0xFFFFFEFC).copy(alpha = 0.95f),
+                dockFill = Color(0xFFFFFAF7).copy(alpha = 0.92f),
+                drawerFill = Color(0xFFFDF5F0).copy(alpha = 0.96f),
+                topSheen = Color.White.copy(alpha = 0.68f),
+                bottomSheen = MedinaOrbPrimary.copy(alpha = 0.06f),
+                rimTopLeft = Color.White.copy(alpha = 0.95f),
+                rimMid = MedinaOrbPrimary.copy(alpha = 0.32f),
+                rimBottomRight = MedinaSecondary.copy(alpha = 0.22f),
                 activeLensFill = MedinaPrimary.copy(alpha = 0.14f),
-                activeLensGlow = MedinaOrbPrimary.copy(alpha = 0.22f),
-                shadowElevation = 6.dp
+                activeLensGlow = MedinaPrimary.copy(alpha = 0.15f),
+                shadowElevation = 0.dp
             )
         }
     }
@@ -171,8 +163,8 @@ data class LiquidGlassPalette(
 
 /**
  * Full-screen iOS 26 Liquid Glass Ambient Light Backdrop.
- * Renders dynamic multi-stop gradient + slowly breathing luminous orbs (hardware-blurred on Android 12+)
- * so every translucent glass surface refracts rich color and depth.
+ * Uses GPU-cached radial gradients via drawWithCache (zero continuous 60fps redraws
+ * and zero heavy RenderEffect blur) so it stays silky smooth even on low-end devices.
  */
 @Composable
 fun LiquidGlassBackdrop(
@@ -180,100 +172,84 @@ fun LiquidGlassBackdrop(
     content: @Composable BoxScope.() -> Unit
 ) {
     val themeMode = LocalAppThemeMode.current
-    val infiniteTransition = rememberInfiniteTransition(label = "liquid_glass_ambient")
-    val drift by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 11000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "orb_drift"
-    )
 
-    val (bgColors, orb1, orb2, orb3) = when (themeMode) {
-        AppThemeMode.LIQUID_GLASS_DARK -> GlassQuad(
-            listOf(LiquidDarkBgTop, LiquidDarkBgMid, Color(0xFF071620), LiquidDarkBgBottom),
-            LiquidDarkOrbPrimary.copy(alpha = 0.28f),
-            LiquidDarkOrbSecondary.copy(alpha = 0.22f),
-            LiquidDarkOrbGold.copy(alpha = 0.16f)
-        )
-        AppThemeMode.LIQUID_GLASS_LIGHT -> GlassQuad(
-            listOf(LiquidLightBgTop, LiquidLightBgMid, LiquidLightBgBottom),
-            LiquidLightOrbPrimary.copy(alpha = 0.28f),
-            LiquidLightOrbSecondary.copy(alpha = 0.26f),
-            LiquidLightOrbGold.copy(alpha = 0.22f)
-        )
-        AppThemeMode.AURORA_PRISM_GLASS -> GlassQuad(
-            listOf(AuroraBgTop, AuroraBgMid, Color(0xFF0E1433), AuroraBgBottom),
-            AuroraOrbPrimary.copy(alpha = 0.34f),
-            AuroraOrbSecondary.copy(alpha = 0.24f),
-            AuroraOrbAccent.copy(alpha = 0.20f)
-        )
-        AppThemeMode.ISLAMIC_EMERALD -> GlassQuad(
-            listOf(Color(0xFFF6EEDF), IslamicBackgroundLight, Color(0xFFE5F0E8)),
-            IslamicGreenLight.copy(alpha = 0.18f),
-            GoldAccentLight.copy(alpha = 0.24f),
-            EarthGreenTertiary.copy(alpha = 0.14f)
-        )
-        AppThemeMode.ISLAMIC_NIGHT -> GlassQuad(
-            listOf(Color(0xFF05100B), IslamicBackgroundDark, Color(0xFF0C1E16), Color(0xFF050D09)),
-            IslamicGreenDark.copy(alpha = 0.24f),
-            GoldAccentDark.copy(alpha = 0.20f),
-            TealGlow.copy(alpha = 0.18f)
-        )
-        AppThemeMode.MEDINA_PEARL -> GlassQuad(
-            listOf(MedinaBgTop, MedinaBgMid, MedinaBgBottom),
-            MedinaOrbPrimary.copy(alpha = 0.26f),
-            MedinaOrbSecondary.copy(alpha = 0.22f),
-            MedinaOrbAccent.copy(alpha = 0.16f)
-        )
-    }
-
-    val orbModifier = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        Modifier.fillMaxSize().blur(44.dp)
-    } else {
-        Modifier.fillMaxSize()
+    val paletteData = remember(themeMode) {
+        when (themeMode) {
+            AppThemeMode.LIQUID_GLASS_DARK -> GlassQuad(
+                listOf(LiquidDarkBgTop, LiquidDarkBgMid, Color(0xFF081722), LiquidDarkBgBottom),
+                LiquidDarkOrbPrimary.copy(alpha = 0.20f),
+                LiquidDarkOrbSecondary.copy(alpha = 0.16f),
+                LiquidDarkOrbGold.copy(alpha = 0.12f)
+            )
+            AppThemeMode.LIQUID_GLASS_LIGHT -> GlassQuad(
+                listOf(LiquidLightBgTop, LiquidLightBgMid, LiquidLightBgBottom),
+                LiquidLightOrbPrimary.copy(alpha = 0.20f),
+                LiquidLightOrbSecondary.copy(alpha = 0.20f),
+                LiquidLightOrbGold.copy(alpha = 0.16f)
+            )
+            AppThemeMode.AURORA_PRISM_GLASS -> GlassQuad(
+                listOf(AuroraBgTop, AuroraBgMid, Color(0xFF0E1433), AuroraBgBottom),
+                AuroraOrbPrimary.copy(alpha = 0.24f),
+                AuroraOrbSecondary.copy(alpha = 0.18f),
+                AuroraOrbAccent.copy(alpha = 0.14f)
+            )
+            AppThemeMode.ISLAMIC_EMERALD -> GlassQuad(
+                listOf(Color(0xFFF6EFE2), IslamicBackgroundLight, Color(0xFFE7F1EA)),
+                IslamicGreenLight.copy(alpha = 0.14f),
+                GoldAccentLight.copy(alpha = 0.18f),
+                EarthGreenTertiary.copy(alpha = 0.10f)
+            )
+            AppThemeMode.ISLAMIC_NIGHT -> GlassQuad(
+                listOf(Color(0xFF06110C), IslamicBackgroundDark, Color(0xFF0D2018), Color(0xFF060E0A)),
+                IslamicGreenDark.copy(alpha = 0.18f),
+                GoldAccentDark.copy(alpha = 0.15f),
+                TealGlow.copy(alpha = 0.13f)
+            )
+            AppThemeMode.MEDINA_PEARL -> GlassQuad(
+                listOf(MedinaBgTop, MedinaBgMid, MedinaBgBottom),
+                MedinaOrbPrimary.copy(alpha = 0.20f),
+                MedinaOrbSecondary.copy(alpha = 0.16f),
+                MedinaOrbAccent.copy(alpha = 0.12f)
+            )
+        }
     }
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(bgColors))
-    ) {
-        Canvas(modifier = orbModifier) {
-            val offset1 = Offset(size.width * (0.14f + 0.08f * drift), size.height * (0.10f + 0.05f * drift))
-            val offset2 = Offset(size.width * (0.88f - 0.07f * drift), size.height * (0.42f + 0.06f * drift))
-            val offset3 = Offset(size.width * (0.42f + 0.09f * drift), size.height * (0.90f - 0.05f * drift))
+            .drawWithCache {
+                val bgBrush = Brush.verticalGradient(paletteData.first)
+                val c1 = Offset(size.width * 0.16f, size.height * 0.12f)
+                val c2 = Offset(size.width * 0.86f, size.height * 0.44f)
+                val c3 = Offset(size.width * 0.44f, size.height * 0.88f)
+                val r1 = (size.width * 0.85f).coerceAtLeast(1f)
+                val r2 = (size.width * 0.78f).coerceAtLeast(1f)
+                val r3 = (size.width * 0.88f).coerceAtLeast(1f)
 
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(orb1, Color.Transparent),
-                    center = offset1,
-                    radius = size.width * 0.78f
-                ),
-                radius = size.width * 0.78f,
-                center = offset1
-            )
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(orb2, Color.Transparent),
-                    center = offset2,
-                    radius = size.width * 0.72f
-                ),
-                radius = size.width * 0.72f,
-                center = offset2
-            )
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(orb3, Color.Transparent),
-                    center = offset3,
-                    radius = size.width * 0.80f
-                ),
-                radius = size.width * 0.80f,
-                center = offset3
-            )
-        }
+                val orbBrush1 = Brush.radialGradient(
+                    colors = listOf(paletteData.second, Color.Transparent),
+                    center = c1,
+                    radius = r1
+                )
+                val orbBrush2 = Brush.radialGradient(
+                    colors = listOf(paletteData.third, Color.Transparent),
+                    center = c2,
+                    radius = r2
+                )
+                val orbBrush3 = Brush.radialGradient(
+                    colors = listOf(paletteData.fourth, Color.Transparent),
+                    center = c3,
+                    radius = r3
+                )
+
+                onDrawBehind {
+                    drawRect(brush = bgBrush)
+                    drawCircle(brush = orbBrush1, radius = r1, center = c1)
+                    drawCircle(brush = orbBrush2, radius = r2, center = c2)
+                    drawCircle(brush = orbBrush3, radius = r3, center = c3)
+                }
+            }
+    ) {
         content()
     }
 }
@@ -300,28 +276,32 @@ fun LiquidGlassFloatingDock(
     val themeMode = LocalAppThemeMode.current
     val isDark = themeMode.isDark
 
-    val specularRim = Brush.linearGradient(
-        colors = listOf(
-            palette.rimTopLeft,
-            palette.rimMid,
-            palette.rimBottomRight,
-            palette.rimTopLeft.copy(alpha = 0.55f)
+    val specularRim = remember(palette) {
+        Brush.linearGradient(
+            colors = listOf(
+                palette.rimTopLeft,
+                palette.rimMid,
+                palette.rimBottomRight,
+                palette.rimTopLeft.copy(alpha = 0.55f)
+            )
         )
-    )
+    }
 
-    val topGlassSheen = Brush.verticalGradient(
-        colors = listOf(
-            palette.topSheen,
-            Color.Transparent,
-            palette.bottomSheen
+    val topGlassSheen = remember(palette) {
+        Brush.verticalGradient(
+            colors = listOf(
+                palette.topSheen,
+                Color.Transparent,
+                palette.bottomSheen
+            )
         )
-    )
+    }
 
     val moreInteraction = remember { MutableInteractionSource() }
     val morePressed by moreInteraction.collectIsPressedAsState()
     val moreScale by animateFloatAsState(
-        targetValue = if (morePressed) 0.90f else if (isDrawerOpen) 1.06f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        targetValue = if (morePressed) 0.94f else 1f,
+        animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
         label = "more_circle_scale"
     )
 
@@ -344,10 +324,10 @@ fun LiquidGlassFloatingDock(
                 modifier = Modifier
                     .weight(1f)
                     .testTag("liquid_glass_bottom_bar"),
-                shape = RoundedCornerShape(36.dp),
+                shape = RoundedCornerShape(34.dp),
                 color = palette.dockFill,
-                border = BorderStroke(1.25.dp, specularRim),
-                shadowElevation = if (isDark) 16.dp else 10.dp
+                border = BorderStroke(1.2.dp, specularRim),
+                shadowElevation = if (isDark) 8.dp else 5.dp
             ) {
                 Box(
                     modifier = Modifier
@@ -366,19 +346,13 @@ fun LiquidGlassFloatingDock(
                             val isPressed by tabInteraction.collectIsPressedAsState()
 
                             val itemScale by animateFloatAsState(
-                                targetValue = when {
-                                    isPressed -> 0.92f
-                                    isSelected -> 1.03f
-                                    else -> 1f
-                                },
-                                animationSpec = spring(
-                                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                                    stiffness = Spring.StiffnessMedium
-                                ),
+                                targetValue = if (isPressed) 0.94f else 1f,
+                                animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
                                 label = "dock_scale_${screen.route}"
                             )
                             val activeBubbleColor by animateColorAsState(
                                 targetValue = if (isSelected) palette.activeLensGlow else Color.Transparent,
+                                animationSpec = tween(durationMillis = 160),
                                 label = "dock_bubble_${screen.route}"
                             )
                             val tintColor by animateColorAsState(
@@ -387,6 +361,7 @@ fun LiquidGlassFloatingDock(
                                 } else {
                                     MaterialTheme.colorScheme.onSurfaceVariant
                                 },
+                                animationSpec = tween(durationMillis = 160),
                                 label = "dock_tint_${screen.route}"
                             )
 
@@ -394,31 +369,16 @@ fun LiquidGlassFloatingDock(
                                 modifier = Modifier
                                     .weight(1f)
                                     .scale(itemScale)
-                                    .defaultMinSize(minHeight = 54.dp)
-                                    .clip(RoundedCornerShape(28.dp))
+                                    .defaultMinSize(minHeight = 52.dp)
+                                    .clip(RoundedCornerShape(26.dp))
                                     .background(activeBubbleColor)
                                     .then(
                                         if (isSelected) {
-                                            Modifier
-                                                .background(
-                                                    Brush.verticalGradient(
-                                                        colors = listOf(
-                                                            Color.White.copy(alpha = if (isDark) 0.22f else 0.72f),
-                                                            Color.Transparent
-                                                        )
-                                                    )
-                                                )
-                                                .border(
-                                                    width = 1.dp,
-                                                    brush = Brush.linearGradient(
-                                                        colors = listOf(
-                                                            Color.White.copy(alpha = if (isDark) 0.50f else 0.95f),
-                                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.40f),
-                                                            Color.White.copy(alpha = 0.14f)
-                                                        )
-                                                    ),
-                                                    shape = RoundedCornerShape(28.dp)
-                                                )
+                                            Modifier.border(
+                                                width = 1.dp,
+                                                color = MaterialTheme.colorScheme.primary.copy(alpha = if (isDark) 0.45f else 0.35f),
+                                                shape = RoundedCornerShape(26.dp)
+                                            )
                                         } else {
                                             Modifier
                                         }
@@ -457,10 +417,10 @@ fun LiquidGlassFloatingDock(
                 }
             }
 
-            // 2. Detached Right-Side Circular Liquid Glass "More" Button (like the video's detached circle)
+            // 2. Detached Right-Side Circular Liquid Glass "More" Button
             Surface(
                 modifier = Modifier
-                    .size(62.dp)
+                    .size(60.dp)
                     .scale(moreScale)
                     .clip(CircleShape)
                     .clickable(
@@ -471,21 +431,12 @@ fun LiquidGlassFloatingDock(
                     .testTag("dock_more_drawer_button"),
                 shape = CircleShape,
                 color = if (isDrawerOpen) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = if (isDark) 0.34f else 0.22f)
+                    MaterialTheme.colorScheme.primary.copy(alpha = if (isDark) 0.32f else 0.22f)
                 } else {
                     palette.dockFill
                 },
-                border = BorderStroke(
-                    width = 1.3.dp,
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = if (isDark) 0.52f else 0.98f),
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
-                            Color.White.copy(alpha = 0.16f)
-                        )
-                    )
-                ),
-                shadowElevation = if (isDark) 16.dp else 10.dp
+                border = BorderStroke(1.2.dp, specularRim),
+                shadowElevation = if (isDark) 8.dp else 5.dp
             ) {
                 Box(
                     modifier = Modifier
@@ -562,12 +513,12 @@ fun LiquidGlassLeftDrawerOverlay(
             visible = visible,
             enter = slideInHorizontally(
                 initialOffsetX = { -it },
-                animationSpec = spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow)
-            ) + fadeIn(tween(180)),
+                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+            ) + fadeIn(tween(150)),
             exit = slideOutHorizontally(
                 targetOffsetX = { -it },
-                animationSpec = tween(210)
-            ) + fadeOut(tween(150)),
+                animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
+            ) + fadeOut(tween(120)),
             modifier = Modifier.align(Alignment.CenterStart)
         ) {
             Surface(
@@ -579,10 +530,10 @@ fun LiquidGlassLeftDrawerOverlay(
                     .statusBarsPadding()
                     .navigationBarsPadding()
                     .testTag("liquid_glass_left_drawer"),
-                shape = RoundedCornerShape(30.dp),
+                shape = RoundedCornerShape(28.dp),
                 color = palette.drawerFill,
                 border = BorderStroke(
-                    width = 1.2.dp,
+                    width = 1.1.dp,
                     brush = Brush.linearGradient(
                         colors = listOf(
                             palette.rimTopLeft,
@@ -591,7 +542,7 @@ fun LiquidGlassLeftDrawerOverlay(
                         )
                     )
                 ),
-                shadowElevation = 20.dp
+                shadowElevation = 10.dp
             ) {
                 Box(
                     modifier = Modifier
@@ -866,7 +817,7 @@ private fun LiquidDrawerMenuItem(
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (pressed) 0.97f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        animationSpec = tween(durationMillis = 100, easing = FastOutSlowInEasing),
         label = "drawer_item_scale"
     )
 
@@ -978,13 +929,14 @@ fun LiquidGlassIconButton(
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.90f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        targetValue = if (pressed) 0.93f else 1f,
+        animationSpec = tween(durationMillis = 100, easing = FastOutSlowInEasing),
         label = "glass_icon_btn_scale"
     )
 
     Surface(
         modifier = modifier
+            .minimumInteractiveComponentSize()
             .size(size)
             .scale(scale)
             .clip(CircleShape)
@@ -994,18 +946,12 @@ fun LiquidGlassIconButton(
                 onClick = onClick
             ),
         shape = CircleShape,
-        color = if (isDark) Color.White.copy(alpha = 0.11f) else Color.White.copy(alpha = 0.72f),
+        color = if (isDark) Color.White.copy(alpha = 0.13f) else Color.White.copy(alpha = 0.82f),
         border = BorderStroke(
             width = 1.dp,
-            brush = Brush.linearGradient(
-                colors = listOf(
-                    Color.White.copy(alpha = if (isDark) 0.42f else 0.98f),
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.24f),
-                    Color.White.copy(alpha = 0.12f)
-                )
-            )
+            color = if (isDark) Color.White.copy(alpha = 0.24f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.20f)
         ),
-        shadowElevation = if (isDark) 6.dp else 3.dp
+        shadowElevation = 0.dp
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
@@ -1183,7 +1129,7 @@ fun LiquidGlassDialog(
                     )
                 )
             ),
-            shadowElevation = if (isDark) 20.dp else 12.dp
+            shadowElevation = if (isDark) 10.dp else 6.dp
         ) {
             Box(
                 modifier = Modifier

@@ -40,9 +40,13 @@ class ExampleRobolectricTest {
         val juz30 = repo.getAyahsForJuz(30)
 
         assertEquals(7, fatihah.size)
+        assertTrue("First ayah should not start with UTF-8 BOM", !fatihah.first().arabicText.startsWith("\uFEFF"))
         assertEquals(286, baqarah.size)
+        assertTrue("Ayat al-Kursi should be present offline", baqarah[254].arabicText.contains("الْقَيُّومُ") || baqarah[254].arabicText.contains("ٱلْقَيُّومُ"))
         assertEquals(6, nas.size)
         assertTrue("Juz 30 should contain over 500 ayahs offline", juz30.size > 500)
+        val totalAyahs = IslamicDataSource.SURAHS.sumOf { repo.getAyahsForSurah(it).size }
+        assertEquals(6236, totalAyahs)
     }
 
     @Test
@@ -158,5 +162,65 @@ class ExampleRobolectricTest {
             com.example.ui.theme.AppThemeMode.LIQUID_GLASS_DARK,
             com.example.ui.theme.AppThemeMode.fromId("SYSTEM", systemDark = true)
         )
+    }
+
+    @Test
+    fun `gemini voice options include clear Male and Female labels and prioritize 3_1 and 3_8 flash`() {
+        val voices = com.example.ai.GeminiAiService.VOICE_OPTIONS
+        assertTrue(voices.any { it.gender == "Male" })
+        assertTrue(voices.any { it.gender == "Female" })
+        assertTrue(voices.all { it.gender == "Male" || it.gender == "Female" })
+
+        val sampleModels = listOf(
+            org.json.JSONObject().apply {
+                put("name", "models/gemini-2.5-flash")
+                put("displayName", "Gemini 2.5 Flash")
+                put("supportedGenerationMethods", org.json.JSONArray().put("generateContent"))
+            },
+            org.json.JSONObject().apply {
+                put("name", "models/gemini-3.1-flash")
+                put("displayName", "Gemini 3.1 Flash")
+                put("supportedGenerationMethods", org.json.JSONArray().put("generateContent"))
+            },
+            org.json.JSONObject().apply {
+                put("name", "models/gemini-3.8-flash")
+                put("displayName", "Gemini 3.8 Flash")
+                put("supportedGenerationMethods", org.json.JSONArray().put("generateContent"))
+            }
+        )
+        val parsed = com.example.ai.GeminiAiService.parseAndCategorizeModels(sampleModels)
+        val textList = parsed.filter { it.category == com.example.ai.GeminiModelCategory.TEXT_GENERATION }
+        val audioList = parsed.filter { it.category == com.example.ai.GeminiModelCategory.AUDIO_READ }
+        assertEquals("gemini-3.1-flash", textList.first().id)
+        assertEquals("gemini-3.8-flash", audioList.first().id)
+    }
+
+    @Test
+    fun `fast voice chunking splits first chunk short for rapid playback and SSE parser skips thought parts`() {
+        val longReply = "**Assalamu Alaikum!** This is the first short sentence for fast voice start. " +
+            "Here is a second sentence with *markdown* formatting and `code` marks that should be cleaned properly. " +
+            "और यह हिंदी का वाक्य है जो तीसरे हिस्से में आसानी से विभाजित होना चाहिए। " +
+            "Finally, this fourth sentence ensures multi-chunk pipelining works seamlessly without cutting words."
+
+        val chunks = com.example.ai.GeminiAiService.splitIntoSpeechChunks(longReply)
+        assertTrue("Expected at least 2 chunks for pipelined speech", chunks.size >= 2)
+        assertTrue("First chunk must be short (<=150 chars) for fast first audio", chunks.first().length <= 150)
+        assertTrue("Markdown symbols should be stripped", chunks.none { it.contains("**") || it.contains("`") })
+
+        val sseJson = """
+            {
+              "candidates": [{
+                "content": {
+                  "parts": [
+                    { "thought": true, "text": "Internal reasoning..." },
+                    { "text": "Bismillah! " },
+                    { "text": "Here is your answer." }
+                  ]
+                }
+              }]
+            }
+        """.trimIndent()
+        val delta = com.example.ai.GeminiAiService.extractTextDeltaFromJson(sseJson)
+        assertEquals("Bismillah! Here is your answer.", delta)
     }
 }

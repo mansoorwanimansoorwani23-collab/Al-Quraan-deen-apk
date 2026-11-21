@@ -44,6 +44,7 @@ class QuranAudioPlayerManager(
     private val coroutineScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var progressJob: Job? = null
     private var loadJob: Job? = null
+    private var prefetchJob: Job? = null
     private var lastSavedTimestampMs = 0L
 
     private val _playbackState = MutableStateFlow(QuranPlaybackState())
@@ -84,6 +85,7 @@ class QuranAudioPlayerManager(
      */
     fun playAyah(surah: Surah, ayah: Ayah, startPositionMs: Int = 0) {
         loadJob?.cancel()
+        prefetchJob?.cancel()
         stopProgressTracker()
         releasePlayer()
 
@@ -309,6 +311,7 @@ class QuranAudioPlayerManager(
         persistCurrentPosition(currentPos)
 
         loadJob?.cancel()
+        prefetchJob?.cancel()
         stopProgressTracker()
         releasePlayer()
         QuranPlaybackService.stopService(context)
@@ -423,6 +426,7 @@ class QuranAudioPlayerManager(
             persistCurrentPosition(safeSeekMs)
             updateForegroundMediaNotification()
             startProgressTracker()
+            prefetchUpcomingAyahs(surah, ayah)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start MediaPlayer for file ${audioFile.path}", e)
             _playbackState.value = _playbackState.value.copy(
@@ -458,6 +462,38 @@ class QuranAudioPlayerManager(
                     }
                 }
                 delay(150L)
+            }
+        }
+    }
+
+    private fun prefetchUpcomingAyahs(currentSurah: Surah, currentAyah: Ayah) {
+        prefetchJob?.cancel()
+        val reciter = _playbackState.value.selectedReciter
+        val currentIdx = _playbackState.value.currentAyahIndex
+        val listSnapshot = currentAyahsList
+        prefetchJob = coroutineScope.launch(Dispatchers.IO) {
+            for (offset in 1..2) {
+                if (!isActive) break
+                val nextIdx = currentIdx + offset
+                if (listSnapshot.isNotEmpty() && nextIdx < listSnapshot.size) {
+                    val upcoming = listSnapshot[nextIdx]
+                    QuranAudioService.prefetchAyahAudio(
+                        context = context,
+                        surahNumber = upcoming.surahNumber,
+                        ayahNumberInSurah = upcoming.numberInSurah,
+                        reciter = reciter
+                    )
+                } else {
+                    val nextNum = currentAyah.numberInSurah + offset
+                    if (nextNum <= currentSurah.numberOfAyahs) {
+                        QuranAudioService.prefetchAyahAudio(
+                            context = context,
+                            surahNumber = currentSurah.number,
+                            ayahNumberInSurah = nextNum,
+                            reciter = reciter
+                        )
+                    }
+                }
             }
         }
     }

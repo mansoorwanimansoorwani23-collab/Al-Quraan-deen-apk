@@ -15,6 +15,7 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -79,7 +80,7 @@ fun IslamicBannerCard(
                 )
             )
         ),
-        shadowElevation = 8.dp
+        shadowElevation = 2.dp
     ) {
         Box(
             modifier = Modifier
@@ -221,34 +222,38 @@ fun LiquidGlassCard(
     val palette = rememberLiquidGlassPalette()
     val isDark = LocalAppThemeMode.current.isDark
 
-    val rimBrush = Brush.linearGradient(
-        colors = listOf(
-            palette.rimTopLeft,
-            borderColor,
-            palette.rimBottomRight,
-            palette.rimTopLeft.copy(alpha = if (isDark) 0.22f else 0.65f)
+    val rimBrush = remember(palette, borderColor, isDark) {
+        Brush.linearGradient(
+            colors = listOf(
+                palette.rimTopLeft,
+                borderColor,
+                palette.rimBottomRight,
+                palette.rimTopLeft.copy(alpha = if (isDark) 0.22f else 0.65f)
+            )
         )
-    )
+    }
+
+    val sheenBrush = remember(palette, backgroundColor, isDark) {
+        Brush.verticalGradient(
+            colors = listOf(
+                palette.topSheen,
+                backgroundColor.copy(alpha = if (isDark) 0.04f else 0.02f),
+                palette.bottomSheen
+            )
+        )
+    }
 
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = shape,
         color = palette.surfaceFill,
-        border = BorderStroke(width = 1.1.dp, brush = rimBrush),
+        border = BorderStroke(width = 1.dp, brush = rimBrush),
         shadowElevation = palette.shadowElevation
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            palette.topSheen,
-                            backgroundColor.copy(alpha = if (isDark) 0.05f else 0.03f),
-                            palette.bottomSheen
-                        )
-                    )
-                )
+                .background(sheenBrush)
                 .padding(contentPadding)
         ) {
             content()
@@ -348,7 +353,8 @@ fun CategoryChip(
 
     Surface(
         modifier = modifier
-            .defaultMinSize(minHeight = 38.dp)
+            .minimumInteractiveComponentSize()
+            .defaultMinSize(minHeight = 40.dp)
             .clip(RoundedCornerShape(20.dp))
             .clickable { onClick() },
         shape = RoundedCornerShape(20.dp),
@@ -359,17 +365,17 @@ fun CategoryChip(
             color = if (isSelected) {
                 Color.White.copy(alpha = 0.45f)
             } else {
-                Color.White.copy(alpha = if (isDark) 0.18f else 0.85f)
+                Color.White.copy(alpha = if (isDark) 0.20f else 0.85f)
             }
         )
     ) {
         Box(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = title,
-                fontSize = 12.sp,
+                fontSize = 13.sp,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                 softWrap = false
             )

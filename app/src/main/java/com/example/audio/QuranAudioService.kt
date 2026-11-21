@@ -5,8 +5,12 @@ import android.util.Log
 import com.example.data.model.Ayah
 import com.example.data.model.Surah
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import okhttp3.ConnectionPool
+import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
@@ -78,15 +82,26 @@ object QuranAudioService {
 
     private const val TAG = "QuranAudioService"
 
-    private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(25, TimeUnit.SECONDS)
-        .readTimeout(35, TimeUnit.SECONDS)
-        .build()
+    private val httpClient: OkHttpClient by lazy {
+        val dispatcher = Dispatcher().apply {
+            maxRequests = 24
+            maxRequestsPerHost = 8
+        }
+        OkHttpClient.Builder()
+            .dispatcher(dispatcher)
+            .connectionPool(ConnectionPool(6, 5, TimeUnit.MINUTES))
+            .protocols(listOf(Protocol.HTTP_2, Protocol.HTTP_1_1))
+            .retryOnConnectionFailure(true)
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(18, TimeUnit.SECONDS)
+            .writeTimeout(10, TimeUnit.SECONDS)
+            .build()
+    }
 
     /**
      * Audio Pipeline:
-     * 1. Check local on-device cache for this Ayah and Reciter.
-     * 2. If not cached, seamlessly stream and cache from verified authentic Quran Audio CDN (EveryAyah/QuranCDN).
+     * 1. Check local on-device cache for this Ayah and Reciter (instant 0ms hit).
+     * 2. If not cached, stream & cache atomically with HTTP/2 keep-alive + CDN failover + retry.
      */
     suspend fun getAyahAudioFile(
         context: Context,
@@ -121,6 +136,27 @@ object QuranAudioService {
         }
     }
 
+    /**
+     * Silently prefetches an upcoming Ayah into the local cache while the current Ayah plays,
+     * eliminating buffering gaps between Ayahs.
+     */
+    suspend fun prefetchAyahAudio(
+        context: Context,
+        surahNumber: Int,
+        ayahNumberInSurah: Int,
+        reciter: ReciterVoice
+    ) = withContext(Dispatchers.IO) {
+        try {
+            val cacheDir = File(context.cacheDir, "quran_audio")
+            if (!cacheDir.exists()) cacheDir.mkdirs()
+            val cachedMp3 = File(cacheDir, "${reciter.id}_${surahNumber}_${ayahNumberInSurah}.mp3")
+            if (cachedMp3.exists() && cachedMp3.length() > 1000) return@withContext
+            downloadAyahFromCdn(surahNumber, ayahNumberInSurah, reciter, cachedMp3)
+        } catch (_: Exception) {
+            // Best-effort background prefetch
+        }
+    }
+
     private suspend fun downloadAyahFromCdn(
         surahNumber: Int,
         ayahNumberInSurah: Int,
@@ -130,38 +166,37 @@ object QuranAudioService {
         val sStr = String.format(java.util.Locale.US, "%03d", surahNumber)
         val aStr = String.format(java.util.Locale.US, "%03d", ayahNumberInSurah)
 
-        // Primary EveryAyah CDN URL pattern: https://everyayah.com/data/Alafasy_128kbps/001001.mp3
-        val url = "https://everyayah.com/data/${reciter.cdnFolder}/$sStr$aStr.mp3"
+        val urls = listOf(
+            "https://everyayah.com/data/${reciter.cdnFolder}/$sStr$aStr.mp3",
+            "https://verses.quran.com/${reciter.cdnFolder}/$sStr$aStr.mp3"
+        )
 
-        val request = Request.Builder().url(url).build()
-        val response = httpClient.newCall(request).execute()
-
-        if (!response.isSuccessful || response.body == null) {
-            // Backup CDN: Quran.com API audio
-            val backupUrl = "https://verses.quran.com/${reciter.cdnFolder}/$sStr$aStr.mp3"
-            try {
-                val backupReq = Request.Builder().url(backupUrl).build()
-                val backupResp = httpClient.newCall(backupReq).execute()
-                if (backupResp.isSuccessful && backupResp.body != null) {
-                    val bytes = backupResp.body!!.bytes()
-                    if (bytes.isNotEmpty()) {
-                        FileOutputStream(outputFile).use { fos -> fos.write(bytes) }
-                        return@withContext QuranAudioResult.Success(outputFile, isFromAi = false)
+        var lastCode = 0
+        for (url in urls) {
+            for (attempt in 1..2) {
+                try {
+                    val request = Request.Builder().url(url).build()
+                    httpClient.newCall(request).execute().use { response ->
+                        lastCode = response.code
+                        if (response.isSuccessful) {
+                            val bytes = response.body?.bytes()
+                            if (bytes != null && bytes.size > 512) {
+                                val tmpFile = File(outputFile.parentFile, "${outputFile.name}.tmp")
+                                FileOutputStream(tmpFile).use { fos -> fos.write(bytes) }
+                                if (!tmpFile.renameTo(outputFile)) {
+                                    tmpFile.copyTo(outputFile, overwrite = true)
+                                    tmpFile.delete()
+                                }
+                                return@withContext QuranAudioResult.Success(outputFile, isFromAi = false)
+                            }
+                        }
                     }
+                } catch (_: Exception) {
+                    if (attempt < 2) delay(250L)
                 }
-            } catch (_: Exception) {}
-            return@withContext QuranAudioResult.Error("Failed to fetch recitation (${response.code})")
+            }
         }
 
-        val bytes = response.body!!.bytes()
-        if (bytes.isEmpty()) {
-            return@withContext QuranAudioResult.Error("Empty audio stream received")
-        }
-
-        FileOutputStream(outputFile).use { fos ->
-            fos.write(bytes)
-        }
-
-        return@withContext QuranAudioResult.Success(outputFile, isFromAi = false)
+        return@withContext QuranAudioResult.Error("Failed to fetch recitation (HTTP $lastCode)")
     }
 }
