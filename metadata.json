@@ -1,0 +1,7 @@
+{
+  "name": "Hidayah",
+  "description": "Complete Muslim lifestyle app by Rauf featuring complete offline Quran, online Quran audio with exact resume, Quran recitation practice, Learn Salah guide, real Adhan alerts, accurate local prayer times, Qibla compass, Azkar & Duas, Hadith, Tasbeeh, and Deen tracker.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
