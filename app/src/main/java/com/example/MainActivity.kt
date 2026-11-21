@@ -7,9 +7,12 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,6 +27,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -37,6 +42,7 @@ import com.example.ui.components.LiquidGlassFloatingDock
 import com.example.ui.components.LiquidGlassIconButton
 import com.example.ui.components.LiquidGlassLeftDrawerOverlay
 import com.example.ui.components.LiquidGlassTopBarSurface
+import com.example.ui.components.LocalBottomDockPadding
 import com.example.ui.navigation.DiscoverTab
 import com.example.ui.navigation.Screen
 import com.example.ui.screens.ai.HidayahAiScreen
@@ -180,11 +186,24 @@ fun HidayahMainApp(viewModel: MainViewModel) {
         Screen.AiAssistant
     )
 
+    val density = LocalDensity.current
+    val navBarBottomDp = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val imeBottomDp = with(density) { WindowInsets.ime.getBottom(density).toDp() }
+    val isKeyboardVisible = imeBottomDp > navBarBottomDp + 24.dp
+    var measuredDockHeightPx by remember { mutableIntStateOf(0) }
+    val measuredDockHeightDp = if (measuredDockHeightPx > 0) {
+        with(density) { measuredDockHeightPx.toDp() }
+    } else {
+        84.dp + navBarBottomDp
+    }
+    val effectiveBottomDockPadding = if (isKeyboardVisible) 0.dp else measuredDockHeightDp
+
     LiquidGlassBackdrop {
         Box(modifier = Modifier.fillMaxSize()) {
             Scaffold(
                 modifier = Modifier.fillMaxSize(),
                 containerColor = Color.Transparent,
+                contentWindowInsets = WindowInsets(0, 0, 0, 0),
                 topBar = {
                     LiquidGlassTopBarSurface {
                         TopAppBar(
@@ -283,88 +302,101 @@ fun HidayahMainApp(viewModel: MainViewModel) {
                         .fillMaxSize()
                         .padding(top = innerPadding.calculateTopPadding())
                 ) {
-                    AnimatedContent(
-                        targetState = currentScreen,
-                        transitionSpec = {
-                            fadeIn(animationSpec = tween(170)) togetherWith
-                                fadeOut(animationSpec = tween(110))
-                        },
-                        label = "screen_navigation"
-                    ) { screenRoute ->
-                        when (screenRoute) {
-                            Screen.Home.route -> {
-                                HomeScreen(
-                                    viewModel = viewModel,
-                                    onNavigateToScreen = { navigateTo(it) },
-                                    onNavigateToDiscoverTab = { tab ->
-                                        activeDiscoverTab = tab
-                                        navigateTo(Screen.Discover.route)
-                                    },
-                                    onOpenSurah = { surahNum ->
-                                        val surah = IslamicDataSource.SURAHS.find { it.number == surahNum } ?: IslamicDataSource.SURAHS[0]
-                                        activeSurahForReading = surah
-                                    }
-                                )
-                            }
-                            Screen.Quran.route -> {
-                                QuranScreen(
-                                    viewModel = viewModel,
-                                    onOpenSurahReader = { surah, juzNum ->
-                                        activeSurahForReading = surah
-                                        activeJuzForReading = juzNum
-                                    }
-                                )
-                            }
-                            Screen.Prayer.route -> {
-                                PrayerScreen(
-                                    viewModel = viewModel,
-                                    onOpenLearnSalah = { navigateTo(Screen.LearnSalah.route) }
-                                )
-                            }
-                            Screen.AiAssistant.route -> {
-                                HidayahAiScreen(
-                                    viewModel = viewModel,
-                                    onOpenSettings = { navigateTo(Screen.Settings.route) }
-                                )
-                            }
-                            Screen.Discover.route -> {
-                                DiscoverScreen(
-                                    viewModel = viewModel,
-                                    initialTab = activeDiscoverTab
-                                )
-                            }
-                            Screen.Search.route -> {
-                                SearchScreen(
-                                    viewModel = viewModel,
-                                    onBack = { navigateBack() },
-                                    onOpenSurah = { surahNum ->
-                                        val surah = IslamicDataSource.SURAHS.find { it.number == surahNum } ?: IslamicDataSource.SURAHS[0]
-                                        activeSurahForReading = surah
-                                    },
-                                    onNavigateToDiscoverTab = { tab ->
-                                        activeDiscoverTab = tab
-                                        navigateTo(Screen.Discover.route)
-                                    }
-                                )
-                            }
-                            Screen.Tracker.route -> {
-                                TrackerScreen(viewModel = viewModel)
-                            }
-                            Screen.Settings.route -> {
-                                SettingsScreen(viewModel = viewModel)
+                    CompositionLocalProvider(LocalBottomDockPadding provides effectiveBottomDockPadding) {
+                        AnimatedContent(
+                            targetState = currentScreen,
+                            transitionSpec = {
+                                fadeIn(animationSpec = tween(170)) togetherWith
+                                    fadeOut(animationSpec = tween(110))
+                            },
+                            label = "screen_navigation"
+                        ) { screenRoute ->
+                            when (screenRoute) {
+                                Screen.Home.route -> {
+                                    HomeScreen(
+                                        viewModel = viewModel,
+                                        onNavigateToScreen = { navigateTo(it) },
+                                        onNavigateToDiscoverTab = { tab ->
+                                            activeDiscoverTab = tab
+                                            navigateTo(Screen.Discover.route)
+                                        },
+                                        onOpenSurah = { surahNum ->
+                                            val surah = IslamicDataSource.SURAHS.find { it.number == surahNum } ?: IslamicDataSource.SURAHS[0]
+                                            activeSurahForReading = surah
+                                        }
+                                    )
+                                }
+                                Screen.Quran.route -> {
+                                    QuranScreen(
+                                        viewModel = viewModel,
+                                        onOpenSurahReader = { surah, juzNum ->
+                                            activeSurahForReading = surah
+                                            activeJuzForReading = juzNum
+                                        }
+                                    )
+                                }
+                                Screen.Prayer.route -> {
+                                    PrayerScreen(
+                                        viewModel = viewModel,
+                                        onOpenLearnSalah = { navigateTo(Screen.LearnSalah.route) }
+                                    )
+                                }
+                                Screen.AiAssistant.route -> {
+                                    HidayahAiScreen(
+                                        viewModel = viewModel,
+                                        onOpenSettings = { navigateTo(Screen.Settings.route) }
+                                    )
+                                }
+                                Screen.Discover.route -> {
+                                    DiscoverScreen(
+                                        viewModel = viewModel,
+                                        initialTab = activeDiscoverTab
+                                    )
+                                }
+                                Screen.Search.route -> {
+                                    SearchScreen(
+                                        viewModel = viewModel,
+                                        onBack = { navigateBack() },
+                                        onOpenSurah = { surahNum ->
+                                            val surah = IslamicDataSource.SURAHS.find { it.number == surahNum } ?: IslamicDataSource.SURAHS[0]
+                                            activeSurahForReading = surah
+                                        },
+                                        onNavigateToDiscoverTab = { tab ->
+                                            activeDiscoverTab = tab
+                                            navigateTo(Screen.Discover.route)
+                                        }
+                                    )
+                                }
+                                Screen.Tracker.route -> {
+                                    TrackerScreen(viewModel = viewModel)
+                                }
+                                Screen.Settings.route -> {
+                                    SettingsScreen(viewModel = viewModel)
+                                }
                             }
                         }
                     }
 
-                    // Floating iOS 26 Liquid Glass Dock: 4-tab pill + detached right-side "More" circular button
-                    LiquidGlassFloatingDock(
-                        items = bottomNavItems,
-                        currentRoute = currentScreen,
-                        isDrawerOpen = isLeftDrawerOpen,
-                        onSelect = { screen -> navigateTo(screen.route) },
-                        onOpenMoreDrawer = { isLeftDrawerOpen = !isLeftDrawerOpen },
+                    // Floating iOS 26 Liquid Glass Dock: auto-hides while soft keyboard (IME) is open
+                    AnimatedVisibility(
+                        visible = !isKeyboardVisible,
+                        enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(tween(150)),
+                        exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(tween(110)),
                         modifier = Modifier.align(Alignment.BottomCenter)
-                    )
+                    ) {
+                        LiquidGlassFloatingDock(
+                            items = bottomNavItems,
+                            currentRoute = currentScreen,
+                            isDrawerOpen = isLeftDrawerOpen,
+                            onSelect = { screen -> navigateTo(screen.route) },
+                            onOpenMoreDrawer = { isLeftDrawerOpen = !isLeftDrawerOpen },
+                            modifier = Modifier.onSizeChanged { size ->
+                                if (size.height > 0 && size.height != measuredDockHeightPx) {
+                                    measuredDockHeightPx = size.height
+                                }
+                            }
+                        )
+                    }
                 }
             }
 

@@ -44,6 +44,7 @@ import com.example.ui.components.LiquidGlassCard
 import com.example.ui.components.LiquidGlassDialog
 import com.example.ui.components.LiquidGlassTextField
 import com.example.ui.components.LiquidGlassTopBarSurface
+import com.example.ui.components.LocalBottomDockPadding
 import com.example.ui.components.SectionHeader
 import com.example.ui.navigation.DiscoverTab
 import com.example.ui.screens.search.SearchScreen
@@ -140,7 +141,7 @@ fun QiblaFinderView(viewModel: MainViewModel) {
             .fillMaxSize()
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        contentPadding = PaddingValues(bottom = 114.dp),
+        contentPadding = PaddingValues(bottom = LocalBottomDockPadding.current + 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
@@ -286,7 +287,7 @@ fun TasbeehView(viewModel: MainViewModel) {
             .fillMaxSize()
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        contentPadding = PaddingValues(bottom = 114.dp),
+        contentPadding = PaddingValues(bottom = LocalBottomDockPadding.current + 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
@@ -486,7 +487,7 @@ fun HadithView(viewModel: MainViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(top = 12.dp, bottom = 114.dp),
+        contentPadding = PaddingValues(top = 12.dp, bottom = LocalBottomDockPadding.current + 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
@@ -637,7 +638,7 @@ fun DuasAndAzkarView(viewModel: MainViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(top = 12.dp, bottom = 114.dp),
+        contentPadding = PaddingValues(top = 12.dp, bottom = LocalBottomDockPadding.current + 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
@@ -794,7 +795,7 @@ fun HijriCalendarView(viewModel: MainViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
-        contentPadding = PaddingValues(bottom = 114.dp),
+        contentPadding = PaddingValues(bottom = LocalBottomDockPadding.current + 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
@@ -893,7 +894,7 @@ fun RamadanModeView(viewModel: MainViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
-        contentPadding = PaddingValues(bottom = 114.dp),
+        contentPadding = PaddingValues(bottom = LocalBottomDockPadding.current + 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
@@ -1038,7 +1039,7 @@ fun GlobalSearchView(viewModel: MainViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
-        contentPadding = PaddingValues(bottom = 114.dp),
+        contentPadding = PaddingValues(bottom = LocalBottomDockPadding.current + 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {

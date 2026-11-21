@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.MainViewModel
 import com.example.ui.components.IslamicBannerCard
 import com.example.ui.components.LiquidGlassCard
+import com.example.ui.components.LocalBottomDockPadding
 import com.example.ui.components.SectionHeader
 import com.example.ui.theme.*
 
@@ -39,12 +40,14 @@ fun TrackerScreen(
     val score = homeState.deenScore
     val animatedProgress by animateFloatAsState(targetValue = score / 100f, label = "score_progress")
 
+    val bottomDockPadding = LocalBottomDockPadding.current
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Transparent)
             .padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(top = 16.dp, bottom = 112.dp),
+        contentPadding = PaddingValues(top = 16.dp, bottom = bottomDockPadding + 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Daily Score Banner

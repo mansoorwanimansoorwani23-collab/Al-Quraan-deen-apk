@@ -31,7 +31,6 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -47,7 +47,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ai.AiChatMessage
 import com.example.ai.GeminiAiService
 import com.example.ai.GeminiModelCategory
 import com.example.ai.GeminiModelInfo
@@ -57,8 +56,8 @@ import com.example.ui.components.LiquidGlassDialog
 import com.example.ui.components.LiquidGlassIconButton
 import com.example.ui.components.LiquidGlassSegmentedTabs
 import com.example.ui.components.LiquidGlassTextField
+import com.example.ui.components.LocalBottomDockPadding
 import com.example.ui.theme.BrandDisplayFontFamily
-import com.example.ui.theme.GoldAccentDark
 
 private const val GEMINI_API_KEY_URL = "https://aistudio.google.com/app/apikey"
 
@@ -74,12 +73,9 @@ fun HidayahAiScreen(
     val modelFetchError by viewModel.geminiModelFetchError.collectAsState()
     val chatMessages by viewModel.aiChatMessages.collectAsState()
     val isGeneratingText by viewModel.isAiGeneratingText.collectAsState()
-    val isGeneratingAudio by viewModel.isAiGeneratingAudio.collectAsState()
-    val isAudioPlaying by viewModel.isAiAudioPlaying.collectAsState()
-    val audioStatus by viewModel.aiAudioStatusMessage.collectAsState()
-    val activePlayingMessageId by viewModel.activePlayingMessageId.collectAsState()
+    val voiceState by viewModel.aiVoiceState.collectAsState()
 
-    var selectedModeTab by remember { mutableStateOf(0) } // 0 = Text Generation, 1 = Audio Read
+    var selectedModeTab by remember { mutableStateOf(0) } // 0 = Chat, 1 = Voice Reader
     var promptInput by remember { mutableStateOf("") }
     var audioTextInput by remember { mutableStateOf("") }
     var apiKeyDraft by remember(settings.geminiApiKey) { mutableStateOf(settings.geminiApiKey) }
@@ -105,7 +101,7 @@ fun HidayahAiScreen(
             ?: GeminiAiService.VOICE_OPTIONS.first()
     }
 
-    // Pre-warm HTTP/2 TLS socket + fallback TTS engine as soon as user opens AI screen
+    // Pre-warm HTTP/2 TLS socket + fallback TTS engine on screen entry
     LaunchedEffect(Unit) {
         viewModel.warmUpAiNetwork()
     }
@@ -133,69 +129,100 @@ fun HidayahAiScreen(
         }
     }
 
-    Column(
+    fun shareReplyText(text: String) {
+        runCatching {
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, "$text\n\n— Shared from Hidayah")
+            }
+            context.startActivity(Intent.createChooser(shareIntent, "Share via"))
+        }
+    }
+
+    val bottomDockPadding = LocalBottomDockPadding.current
+    val density = LocalDensity.current
+    val imeBottomDp = with(density) { WindowInsets.ime.getBottom(density).toDp() }
+    val effectiveBottomInset = maxOf(bottomDockPadding, imeBottomDp)
+
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Transparent)
-            .padding(horizontal = 16.dp)
+            .padding(bottom = effectiveBottomInset),
+        contentAlignment = Alignment.TopCenter
     ) {
-        Spacer(modifier = Modifier.height(10.dp))
+        val horizontalPadding = if (maxWidth < 360.dp) 12.dp else 16.dp
 
-        // Header + Active Models Card
-        LiquidGlassCard(
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .testTag("hidayah_ai_header_card"),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)
+                .fillMaxSize()
+                .widthIn(max = 680.dp)
+                .padding(horizontal = horizontalPadding)
         ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primaryContainer),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.AutoAwesome,
-                                contentDescription = "Hidayah AI",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(21.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Hidayah AI",
-                                fontFamily = BrandDisplayFontFamily,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                text = if (hasApiKey) {
-                                    "Voice: ${activeVoiceOption.name} (${activeVoiceOption.gender})"
-                                } else {
-                                    "Enter Gemini API key below to start"
-                                },
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
+            Spacer(modifier = Modifier.height(8.dp))
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (hasApiKey) {
-                            LiquidGlassIconButton(
-                                onClick = {
+            // Compact, User-Friendly Header Bar (gives maximum room to chat & voice controls)
+            LiquidGlassCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("hidayah_ai_header_card"),
+                shape = RoundedCornerShape(20.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+            ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.AutoAwesome,
+                            contentDescription = "Hidayah AI",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Hidayah AI",
+                            fontFamily = BrandDisplayFontFamily,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1
+                        )
+                        Text(
+                            text = if (hasApiKey) {
+                                "${activeVoiceOption.name} (${activeVoiceOption.gender}) • Tap Models to change"
+                            } else {
+                                "Connect your Gemini API key below"
+                            },
+                            fontSize = 11.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (hasApiKey) {
+                        Surface(
+                            modifier = Modifier
+                                .defaultMinSize(minHeight = 40.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable {
                                     setupWizardInitialStep = 0
                                     if (availableModels.isEmpty()) {
                                         viewModel.refreshGeminiModels { ok ->
@@ -204,108 +231,48 @@ fun HidayahAiScreen(
                                     } else {
                                         showModelSetupPopup = true
                                     }
-                                },
-                                icon = Icons.Filled.Tune,
-                                contentDescription = "Select AI Models & Voice",
-                                size = 40.dp,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.testTag("ai_open_model_wizard_button")
-                            )
-                        }
-                        LiquidGlassIconButton(
-                            onClick = {
-                                if (hasApiKey) showApiKeyChangeDialog = true else onOpenSettings()
-                            },
-                            icon = if (hasApiKey) Icons.Filled.Key else Icons.Filled.Settings,
-                            contentDescription = "Manage Gemini API Key",
-                            size = 40.dp,
-                            tint = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.testTag("ai_open_settings_button")
-                        )
-                    }
-                }
-
-                if (hasApiKey) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Surface(
-                            modifier = Modifier
-                                .weight(1f)
-                                .defaultMinSize(minHeight = 48.dp)
-                                .clip(RoundedCornerShape(14.dp))
-                                .clickable {
-                                    setupWizardInitialStep = 0
-                                    showModelSetupPopup = true
                                 }
-                                .testTag("ai_chip_text_model"),
+                                .testTag("ai_open_model_wizard_button"),
                             shape = RoundedCornerShape(14.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f),
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.30f))
                         ) {
-                            Column(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                verticalArrangement = Arrangement.Center
+                            Row(
+                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Tune,
+                                    contentDescription = "Select AI Models & Voice",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(5.dp))
                                 Text(
-                                    text = "TEXT MODEL",
-                                    fontSize = 10.sp,
+                                    text = "Models",
+                                    fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary
                                 )
-                                Text(
-                                    text = settings.selectedGeminiTextModel.ifBlank { "Tap to choose" },
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-
-                        Surface(
-                            modifier = Modifier
-                                .weight(1f)
-                                .defaultMinSize(minHeight = 48.dp)
-                                .clip(RoundedCornerShape(14.dp))
-                                .clickable {
-                                    setupWizardInitialStep = 1
-                                    showModelSetupPopup = true
-                                }
-                                .testTag("ai_chip_voice_model"),
-                            shape = RoundedCornerShape(14.dp),
-                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.30f))
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                Text(
-                                    text = "VOICE MODEL",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.secondary
-                                )
-                                Text(
-                                    text = settings.selectedGeminiAudioModel.ifBlank { "Tap to choose" },
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
                             }
                         }
                     }
+
+                    LiquidGlassIconButton(
+                        onClick = {
+                            if (hasApiKey) showApiKeyChangeDialog = true else onOpenSettings()
+                        },
+                        icon = if (hasApiKey) Icons.Filled.Key else Icons.Filled.Settings,
+                        contentDescription = "Manage Gemini API Key",
+                        size = 40.dp,
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.testTag("ai_open_settings_button")
+                    )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         if (!hasApiKey) {
             // Direct In-Screen Gemini API Key Setup Card (Triggers 3-Step Model & Voice Setup Pop-up)
@@ -314,7 +281,7 @@ fun HidayahAiScreen(
                     .fillMaxWidth()
                     .weight(1f)
                     .verticalScroll(rememberScrollState())
-                    .padding(bottom = 114.dp),
+                    .padding(bottom = 16.dp),
                 verticalArrangement = Arrangement.Center
             ) {
                 LiquidGlassCard(
@@ -351,7 +318,7 @@ fun HidayahAiScreen(
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "Enter your Gemini API key below. Right after saving, a quick 3-step pop-up will let you choose your Text Model, Voice Model, and Male/Female Voice.",
+                            text = "Enter your Gemini API key below. Right after saving, a quick 3-step pop-up lets you select your Text Model, Voice Model, and Male/Female Voice.",
                             fontSize = 13.sp,
                             lineHeight = 20.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -450,59 +417,31 @@ fun HidayahAiScreen(
                 }
             }
         } else {
-            // Mode Switcher: Liquid Glass Segmented Control
+            // Simple, Friendly Mode Tabs: Chat | Voice Reader
             LiquidGlassSegmentedTabs(
-                tabs = listOf("Text Generation", "Audio Read"),
+                tabs = listOf("Ask AI", "Voice Reader"),
                 selectedIndex = selectedModeTab,
                 onSelect = { selectedModeTab = it }
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // Live Audio Status Banner (if playing/generating)
-            AnimatedVisibility(visible = isGeneratingAudio || isAudioPlaying || !audioStatus.isNullOrBlank()) {
-                LiquidGlassCard(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                            if (isGeneratingAudio) {
-                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                            } else {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = audioStatus ?: if (isGeneratingAudio) "Generating AI audio..." else "Playing AI Audio Read",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                softWrap = true
-                            )
-                        }
-                        if (isAudioPlaying || isGeneratingAudio) {
-                            TextButton(onClick = { viewModel.stopAiAudioPlayback() }) {
-                                Text("Stop", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
+            // Interactive Seekable Voice Player (Pause / Resume / -5s / +5s / Speed / Seekbar)
+            AnimatedVisibility(visible = voiceState.isActive || !voiceState.statusMessage.isNullOrBlank()) {
+                AiVoicePlayerBar(
+                    voiceState = voiceState,
+                    onTogglePauseResume = { viewModel.togglePauseResumeAiVoice() },
+                    onRewind = { viewModel.rewindAiVoice(5_000L) },
+                    onForward = { viewModel.forwardAiVoice(5_000L) },
+                    onSeekFraction = { viewModel.seekAiVoice(it) },
+                    onCycleSpeed = { viewModel.cycleAiVoiceSpeed() },
+                    onStop = { viewModel.stopAiAudioPlayback() },
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
             }
 
             if (selectedModeTab == 0) {
-                // ================= TEXT GENERATION TAB =================
+                // ================= CHAT TAB =================
                 LazyColumn(
                     state = chatListState,
                     modifier = Modifier
@@ -519,32 +458,80 @@ fun HidayahAiScreen(
                             ) {
                                 Column(modifier = Modifier.fillMaxWidth()) {
                                     Text(
-                                        text = "Assalamu Alaikum — Ask Hidayah AI",
+                                        text = "Assalamu Alaikum",
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 15.sp,
+                                        fontSize = 17.sp,
                                         color = MaterialTheme.colorScheme.primary
                                     )
-                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "Ask questions in English, Hindi, Urdu, or Arabic about Tafsir, Hadith, Duas, Salah, or daily guidance. Tap any reply's speaker icon to hear it in ${activeVoiceOption.name} (${activeVoiceOption.gender}) voice.",
+                                        text = "Ask any Islamic question in Hindi, English, Urdu, or Arabic. Voice automatically prepares alongside every answer so you can listen instantly, pause, rewind, or skip ahead.",
                                         fontSize = 13.sp,
                                         lineHeight = 19.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         softWrap = true
                                     )
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    val starters = listOf(
-                                        "Explain Ayat al-Kursi simply",
-                                        "Morning Dua with meaning",
-                                        "How to improve Khushu in Salah?",
-                                        "नमाज़ में ध्यान लगाने के तरीके बताएं"
+                                    Spacer(modifier = Modifier.height(14.dp))
+                                    Text(
+                                        text = "Try asking:",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
                                     )
-                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        items(starters) { starter ->
-                                            AssistChip(
-                                                onClick = { viewModel.sendAiChatPrompt(starter) },
-                                                label = { Text(starter, fontSize = 12.sp) }
-                                            )
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    val starters = listOf(
+                                        "Ayat al-Kursi meaning" to "Explain Ayat al-Kursi in simple words",
+                                        "नमाज़ में खुशु" to "नमाज़ में ध्यान और खुशु लगाने के आसान तरीके बताएं",
+                                        "Morning Dua" to "Share a short morning Dua with meaning",
+                                        "सुकून की दुआ" to "दिल को सुकून मिलने की आसान दुआ और उसका मतलब बताएं"
+                                    )
+
+                                    starters.chunked(2).forEach { pair ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(bottom = 8.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            pair.forEach { (title, prompt) ->
+                                                Surface(
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .defaultMinSize(minHeight = 56.dp)
+                                                        .clip(RoundedCornerShape(14.dp))
+                                                        .clickable { viewModel.sendAiChatPrompt(prompt) },
+                                                    shape = RoundedCornerShape(14.dp),
+                                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                                                    border = BorderStroke(
+                                                        1.dp,
+                                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+                                                    )
+                                                ) {
+                                                    Column(
+                                                        modifier = Modifier.padding(11.dp),
+                                                        verticalArrangement = Arrangement.Center
+                                                    ) {
+                                                        Text(
+                                                            text = title,
+                                                            fontSize = 13.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = MaterialTheme.colorScheme.primary,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                        Spacer(modifier = Modifier.height(2.dp))
+                                                        Text(
+                                                            text = prompt,
+                                                            fontSize = 11.sp,
+                                                            lineHeight = 15.sp,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            maxLines = 2,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -559,22 +546,26 @@ fun HidayahAiScreen(
                                 TextButton(onClick = { viewModel.clearAiChat() }) {
                                     Icon(Icons.Filled.DeleteSweep, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Clear Chat", fontSize = 12.sp)
+                                    Text("New Chat", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         }
 
                         items(chatMessages, key = { it.id }) { msg ->
-                            val isThisMessageAudioActive = activePlayingMessageId == msg.id
+                            val isActive = voiceState.activeMessageId == msg.id
                             AiChatBubble(
                                 message = msg,
-                                isAudioLoading = isThisMessageAudioActive && isGeneratingAudio,
-                                isAudioPlaying = isThisMessageAudioActive && isAudioPlaying,
+                                isAudioLoading = isActive && voiceState.isLoading,
+                                isAudioPlaying = isActive && voiceState.isPlaying,
+                                isAudioPaused = isActive && voiceState.isPaused,
+                                isVoicePreloaded = voiceState.preloadedMessageIds.contains(msg.id),
+                                isVoicePreloading = voiceState.preloadingMessageIds.contains(msg.id),
                                 onCopy = {
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                     clipboard.setPrimaryClip(ClipData.newPlainText("Hidayah AI", msg.text))
                                     Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
                                 },
+                                onShare = { shareReplyText(msg.text) },
                                 onReadAloud = {
                                     viewModel.readTextWithGeminiAudio(msg.text, messageId = msg.id)
                                 }
@@ -583,13 +574,13 @@ fun HidayahAiScreen(
                     }
                 }
 
-                // Bottom Composer (spaced cleanly above floating Liquid Glass dock)
+                // Clean Bottom Composer (automatically sits above floating dock or above keyboard on every phone)
                 LiquidGlassCard(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 8.dp, bottom = 98.dp),
+                        .padding(top = 6.dp, bottom = 8.dp),
                     shape = RoundedCornerShape(24.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -598,7 +589,7 @@ fun HidayahAiScreen(
                         OutlinedTextField(
                             value = promptInput,
                             onValueChange = { promptInput = it },
-                            placeholder = { Text("Ask anything...", fontSize = 14.sp) },
+                            placeholder = { Text("Ask a question...", fontSize = 14.sp) },
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("ai_prompt_input"),
@@ -649,12 +640,12 @@ fun HidayahAiScreen(
                     }
                 }
             } else {
-                // ================= AUDIO READ TAB =================
+                // ================= VOICE READER TAB =================
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    contentPadding = PaddingValues(bottom = 112.dp),
+                    contentPadding = PaddingValues(bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     item {
@@ -664,28 +655,26 @@ fun HidayahAiScreen(
                         ) {
                             Column(modifier = Modifier.fillMaxWidth()) {
                                 Text(
-                                    text = "AI Audio Read Studio",
+                                    text = "Voice Reader",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 16.sp,
                                     color = MaterialTheme.colorScheme.primary
                                 )
-                                Spacer(modifier = Modifier.height(4.dp))
+                                Spacer(modifier = Modifier.height(3.dp))
                                 Text(
-                                    text = "Voice Model: ${settings.selectedGeminiAudioModel.ifBlank { "Tap Tune icon to select" }}",
+                                    text = "Paste or type any passage to listen with pause, rewind, and skip controls.",
                                     fontSize = 12.sp,
-                                    lineHeight = 18.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    softWrap = true
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
 
                                 Spacer(modifier = Modifier.height(12.dp))
                                 Text(
-                                    text = "Select Voice (Male / Female):",
+                                    text = "Choose Voice (Male / Female)",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
-                                Spacer(modifier = Modifier.height(8.dp))
+                                Spacer(modifier = Modifier.height(6.dp))
 
                                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     items(GeminiAiService.VOICE_OPTIONS) { option ->
@@ -708,8 +697,8 @@ fun HidayahAiScreen(
                                 LiquidGlassTextField(
                                     value = audioTextInput,
                                     onValueChange = { audioTextInput = it },
-                                    label = "Text for AI to Read Aloud",
-                                    placeholder = "Type or paste a Dua meaning, Hadith, reflection, or lesson...",
+                                    label = "Text to Listen",
+                                    placeholder = "Type or paste a Dua meaning, Hadith, or note...",
                                     singleLine = false,
                                     minLines = 4,
                                     maxLines = 7,
@@ -719,35 +708,39 @@ fun HidayahAiScreen(
                                 )
 
                                 Spacer(modifier = Modifier.height(12.dp))
+                                val isStudioPlaying = voiceState.activeMessageId == "voice_studio" && voiceState.isPlaying
+                                val isStudioPaused = voiceState.activeMessageId == "voice_studio" && voiceState.isPaused
                                 Button(
                                     onClick = {
-                                        if (isAudioPlaying) {
-                                            viewModel.stopAiAudioPlayback()
+                                        if (isStudioPlaying || isStudioPaused) {
+                                            viewModel.togglePauseResumeAiVoice()
                                         } else if (audioTextInput.isNotBlank()) {
-                                            viewModel.readTextWithGeminiAudio(audioTextInput)
+                                            viewModel.readTextWithGeminiAudio(audioTextInput, messageId = "voice_studio")
                                         }
                                     },
-                                    enabled = (audioTextInput.isNotBlank() && !isGeneratingAudio) || isAudioPlaying,
+                                    enabled = (audioTextInput.isNotBlank() && !voiceState.isLoading) || isStudioPlaying || isStudioPaused,
                                     shape = RoundedCornerShape(16.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (isAudioPlaying) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                                    ),
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(50.dp)
                                         .testTag("ai_audio_read_play_button")
                                 ) {
                                     Icon(
-                                        imageVector = if (isAudioPlaying) Icons.Filled.Stop else Icons.AutoMirrored.Filled.VolumeUp,
+                                        imageVector = when {
+                                            isStudioPlaying -> Icons.Filled.Pause
+                                            isStudioPaused -> Icons.Filled.PlayArrow
+                                            else -> Icons.AutoMirrored.Filled.VolumeUp
+                                        },
                                         contentDescription = null,
-                                        modifier = Modifier.size(18.dp)
+                                        modifier = Modifier.size(19.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
                                         text = when {
-                                            isGeneratingAudio -> "Generating Audio..."
-                                            isAudioPlaying -> "Stop Audio"
-                                            else -> "Read Aloud with AI"
+                                            voiceState.isLoading -> "Loading Voice..."
+                                            isStudioPlaying -> "Pause Voice"
+                                            isStudioPaused -> "Resume Voice"
+                                            else -> "Play Voice"
                                         },
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 14.sp
@@ -764,7 +757,7 @@ fun HidayahAiScreen(
                         ) {
                             Column(modifier = Modifier.fillMaxWidth()) {
                                 Text(
-                                    text = "Quick Passages to Listen",
+                                    text = "Quick Samples",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp,
                                     color = MaterialTheme.colorScheme.onSurface
@@ -772,9 +765,9 @@ fun HidayahAiScreen(
                                 Spacer(modifier = Modifier.height(8.dp))
 
                                 val samples = listOf(
-                                    "Hadith on Intentions" to "The Prophet Muhammad (peace be upon him) said: Actions are judged by intentions, and every person will have what they intended.",
-                                    "Morning Gratitude Reflection" to "O Allah, whatever blessing has been received by me or by any of Your creation is from You alone, without partner; so for You is all praise and thanks.",
-                                    "Peace & Remembrance (Hindi)" to "बेशक अल्लाह के ज़िक्र से ही दिलों को सच्चा सुकून मिलता है। हर सुबह और शाम अल्लाह का शुक्र अदा करें।"
+                                    "Hadith on Intentions" to "The Prophet Muhammad, peace be upon him, said, Actions are judged by intentions, and every person will have what they intended.",
+                                    "Morning Gratitude" to "O Allah, whatever blessing has been received by me or by any of Your creation is from You alone, without partner, so for You is all praise and thanks.",
+                                    "सुकून और ज़िक्र (Hindi)" to "बेशक अल्लाह के ज़िक्र से ही दिलों को सच्चा सुकून मिलता है। हर सुबह और शाम अल्लाह का शुक्र अदा करें।"
                                 )
 
                                 samples.forEach { (title, text) ->
@@ -783,7 +776,10 @@ fun HidayahAiScreen(
                                             .fillMaxWidth()
                                             .padding(vertical = 4.dp)
                                             .clip(RoundedCornerShape(14.dp))
-                                            .clickable { audioTextInput = text },
+                                            .clickable {
+                                                audioTextInput = text
+                                                viewModel.readTextWithGeminiAudio(text, messageId = "voice_studio")
+                                            },
                                         shape = RoundedCornerShape(14.dp),
                                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.50f)
                                     ) {
@@ -805,9 +801,9 @@ fun HidayahAiScreen(
                                             }
                                             Icon(
                                                 imageVector = Icons.Filled.PlayCircle,
-                                                contentDescription = "Load sample",
+                                                contentDescription = "Play sample",
                                                 tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(28.dp)
+                                                modifier = Modifier.size(30.dp)
                                             )
                                         }
                                     }
@@ -817,6 +813,7 @@ fun HidayahAiScreen(
                     }
                 }
             }
+        }
         }
     }
 
@@ -839,14 +836,14 @@ fun HidayahAiScreen(
                 showModelSetupPopup = false
                 Toast.makeText(
                     context,
-                    "AI configured: $chosenText • $chosenVoice",
+                    "Saved: $chosenText • $chosenVoice",
                     Toast.LENGTH_SHORT
                 ).show()
             }
         )
     }
 
-    // ================= UPDATE API KEY POP-UP (From AI Header Key Icon) =================
+    // ================= UPDATE API KEY POP-UP =================
     if (showApiKeyChangeDialog) {
         var modalKey by remember { mutableStateOf(settings.geminiApiKey) }
         var showPlain by remember { mutableStateOf(false) }
@@ -929,12 +926,6 @@ fun HidayahAiScreen(
     }
 }
 
-/**
- * Clean, user-friendly 3-Step Guided AI Setup Pop-up:
- * Step 1: Select Text Model (recommends 3.1 Flash at top, user can pick any model)
- * Step 2: Select Voice/Audio Model (recommends 3.8 Flash at top, user can pick any model)
- * Step 3: Select Voice with clear Male / Female labels next to each voice -> Submit & Save all 3
- */
 @Composable
 private fun AiModelSetupWizardDialog(
     initialStep: Int,
@@ -1000,7 +991,6 @@ private fun AiModelSetupWizardDialog(
                     }
                 }
                 Spacer(modifier = Modifier.height(10.dp))
-                // 3-step progress indicator bar
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1026,14 +1016,11 @@ private fun AiModelSetupWizardDialog(
         text = {
             AnimatedContent(
                 targetState = currentStep,
-                transitionSpec = {
-                    fadeIn(tween(150)) togetherWith fadeOut(tween(100))
-                },
+                transitionSpec = { fadeIn(tween(150)) togetherWith fadeOut(tween(100)) },
                 label = "ai_setup_wizard_step"
             ) { step ->
                 when (step) {
                     0 -> {
-                        // STEP 1: TEXT MODEL
                         Column(modifier = Modifier.fillMaxWidth()) {
                             RecommendationBanner(
                                 badge = "RECOMMENDED FOR TEXT",
@@ -1065,7 +1052,6 @@ private fun AiModelSetupWizardDialog(
                     }
 
                     1 -> {
-                        // STEP 2: VOICE / AUDIO MODEL
                         Column(modifier = Modifier.fillMaxWidth()) {
                             RecommendationBanner(
                                 badge = "RECOMMENDED FOR VOICE",
@@ -1104,7 +1090,6 @@ private fun AiModelSetupWizardDialog(
                     }
 
                     else -> {
-                        // STEP 3: VOICE SELECTION (WITH MALE / FEMALE LABELS)
                         Column(modifier = Modifier.fillMaxWidth()) {
                             RecommendationBanner(
                                 badge = "VOICE GENDER & STYLE",
@@ -1173,9 +1158,7 @@ private fun AiModelSetupWizardDialog(
                 }
             } else {
                 Button(
-                    onClick = {
-                        onSubmit(chosenTextModel, chosenAudioModel, chosenVoice)
-                    },
+                    onClick = { onSubmit(chosenTextModel, chosenAudioModel, chosenVoice) },
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier
                         .height(46.dp)
@@ -1306,127 +1289,6 @@ private fun SetupSelectionTile(
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                 )
-            }
-        }
-    }
-}
-
-@Composable
-private fun AiChatBubble(
-    message: AiChatMessage,
-    isAudioLoading: Boolean = false,
-    isAudioPlaying: Boolean = false,
-    onCopy: () -> Unit,
-    onReadAloud: () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (message.isUser) Arrangement.End else Arrangement.Start
-    ) {
-        LiquidGlassCard(
-            modifier = Modifier.fillMaxWidth(if (message.isUser) 0.86f else 0.96f),
-            shape = RoundedCornerShape(
-                topStart = 20.dp,
-                topEnd = 20.dp,
-                bottomStart = if (message.isUser) 20.dp else 6.dp,
-                bottomEnd = if (message.isUser) 6.dp else 20.dp
-            ),
-            borderColor = if (message.isUser) {
-                GoldAccentDark.copy(alpha = 0.45f)
-            } else {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
-            },
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
-        ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                if (!message.isUser && message.modelUsed.isNotBlank()) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(bottom = 4.dp)
-                    ) {
-                        Text(
-                            text = "Hidayah AI • ${message.modelUsed}",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        if (message.isStreaming) {
-                            Spacer(modifier = Modifier.width(6.dp))
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(10.dp),
-                                strokeWidth = 1.6.dp,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                }
-                if (!message.isUser && message.isStreaming && message.text.isBlank()) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(15.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Responding...",
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                } else {
-                    Text(
-                        text = message.text,
-                        fontSize = 14.sp,
-                        lineHeight = 21.sp,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        softWrap = true
-                    )
-                }
-                if (!message.isUser && message.text.isNotBlank() && !message.isStreaming) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = onCopy, modifier = Modifier.size(40.dp)) {
-                            Icon(
-                                imageVector = Icons.Outlined.ContentCopy,
-                                contentDescription = "Copy AI reply",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                        IconButton(onClick = onReadAloud, modifier = Modifier.size(40.dp)) {
-                            when {
-                                isAudioLoading -> {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(18.dp),
-                                        strokeWidth = 2.dp,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                                isAudioPlaying -> {
-                                    Icon(
-                                        imageVector = Icons.Filled.StopCircle,
-                                        contentDescription = "Stop reading AI reply",
-                                        tint = MaterialTheme.colorScheme.error,
-                                        modifier = Modifier.size(21.dp)
-                                    )
-                                }
-                                else -> {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                                        contentDescription = "Read AI reply aloud",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
             }
         }
     }

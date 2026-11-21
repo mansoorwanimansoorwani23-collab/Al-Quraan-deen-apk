@@ -8,8 +8,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -98,6 +100,7 @@ fun OnlineQuranAudioScreen(
     LiquidGlassBackdrop {
         Scaffold(
             containerColor = Color.Transparent,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
             topBar = {
                 LiquidGlassTopBarSurface {
                     TopAppBar(
@@ -189,6 +192,8 @@ fun OnlineQuranAudioScreen(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
+                    .widthIn(max = 680.dp)
+                    .align(Alignment.CenterHorizontally)
                     .padding(horizontal = 16.dp),
                 contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -544,8 +549,10 @@ fun OnlineQuranAudioScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .navigationBarsPadding()
                     .padding(horizontal = 20.dp)
-                    .padding(bottom = 32.dp)
+                    .padding(bottom = 24.dp)
             ) {
                 Text(
                     text = "Select Quran Reciter",
@@ -611,158 +618,287 @@ private fun OnlineAudioPlayerBar(
     onRetry: () -> Unit
 ) {
     val palette = rememberLiquidGlassPalette()
-    Surface(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-            .testTag("online_quran_player_bar"),
-        shape = RoundedCornerShape(28.dp),
-        color = palette.dockFill,
-        border = BorderStroke(
-            width = 1.2.dp,
-            brush = androidx.compose.ui.graphics.Brush.linearGradient(
-                listOf(palette.rimTopLeft, palette.rimMid, palette.rimBottomRight)
-            )
-        ),
-        shadowElevation = 14.dp
+            .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime)),
+        contentAlignment = Alignment.Center
     ) {
-        Column(
+        val isCompactWidth = maxWidth < 360.dp
+        val outerHPad = if (isCompactWidth) 10.dp else 12.dp
+
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .widthIn(max = 600.dp)
+                .padding(horizontal = outerHPad, vertical = 8.dp)
+                .testTag("online_quran_player_bar"),
+            shape = RoundedCornerShape(26.dp),
+            color = palette.dockFill,
+            border = BorderStroke(
+                width = 1.2.dp,
+                brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                    listOf(palette.rimTopLeft, palette.rimMid, palette.rimBottomRight)
+                )
+            ),
+            shadowElevation = 10.dp
         ) {
-            AnimatedVisibility(visible = playbackState.errorMessage != null) {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp),
-                    shape = RoundedCornerShape(10.dp),
-                    color = MaterialTheme.colorScheme.errorContainer
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = if (isCompactWidth) 12.dp else 16.dp, vertical = 10.dp)
+            ) {
+                AnimatedVisibility(visible = playbackState.errorMessage != null) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.errorContainer
                     ) {
-                        Text(
-                            text = playbackState.errorMessage ?: "Connection error",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier.weight(1f),
-                            softWrap = true
-                        )
-                        TextButton(onClick = onRetry) {
-                            Text("Retry", fontWeight = FontWeight.Bold)
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = playbackState.errorMessage ?: "Connection error",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.weight(1f),
+                                softWrap = true
+                            )
+                            TextButton(onClick = onRetry) {
+                                Text("Retry", fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
-            }
 
-            playbackState.currentAyah?.let { liveAyah ->
-                val surahName = playbackState.currentSurah?.nameEnglish ?: "Quran"
-                Text(
-                    text = "Surah $surahName • Ayah ${liveAyah.numberInSurah} • Juz ${liveAyah.juz}",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = liveAyah.arabicText,
-                    fontFamily = resolveQuranFontFamily(quranFontFamily),
-                    fontSize = 16.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Right,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            if (playbackState.isPlaying || playbackState.isPaused || playbackState.durationMs > 0) {
+                // Row 1: Now Playing Surah/Ayah + Compact Reciter & Speed Pills (never collides with transport buttons)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(formatAudioMs(playbackState.currentPositionMs), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Slider(
-                        value = playbackState.playbackProgress,
-                        onValueChange = onSeek,
+                    Column(
                         modifier = Modifier
                             .weight(1f)
-                            .padding(horizontal = 8.dp)
-                    )
-                    Text(formatAudioMs(playbackState.durationMs), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                TextButton(onClick = onOpenReciterPicker) {
-                    Text(
-                        text = playbackState.selectedReciter.name.substringBefore(" "),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1
-                    )
-                }
-
-                Box {
-                    TextButton(onClick = { onToggleSpeedMenu(true) }) {
-                        Text("${playbackState.playbackSpeed}x", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                    DropdownMenu(expanded = showSpeedMenu, onDismissRequest = { onToggleSpeedMenu(false) }) {
-                        listOf(0.75f, 1.0f, 1.25f, 1.5f).forEach { speed ->
-                            DropdownMenuItem(
-                                text = { Text("${speed}x") },
-                                onClick = {
-                                    onSelectSpeed(speed)
-                                    onToggleSpeedMenu(false)
-                                }
+                            .padding(end = 8.dp)
+                    ) {
+                        val liveAyah = playbackState.currentAyah
+                        if (liveAyah != null) {
+                            val surahName = playbackState.currentSurah?.nameEnglish ?: "Quran"
+                            Text(
+                                text = "Surah $surahName • Ayah ${liveAyah.numberInSurah}",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = liveAyah.arabicText,
+                                fontFamily = resolveQuranFontFamily(quranFontFamily),
+                                fontSize = 15.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Right,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        } else {
+                            Text(
+                                text = "Online Quran Player",
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = playbackState.selectedReciter.name,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Surface(
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .defaultMinSize(minHeight = 34.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable(onClick = onOpenReciterPicker),
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.28f))
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = playbackState.selectedReciter.name.substringBefore(" "),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+
+                        Box {
+                            Surface(
+                                modifier = Modifier
+                                    .minimumInteractiveComponentSize()
+                                    .defaultMinSize(minWidth = 44.dp, minHeight = 34.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { onToggleSpeedMenu(true) },
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "${playbackState.playbackSpeed}x",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+                            DropdownMenu(expanded = showSpeedMenu, onDismissRequest = { onToggleSpeedMenu(false) }) {
+                                listOf(0.75f, 1.0f, 1.25f, 1.5f).forEach { speed ->
+                                    DropdownMenuItem(
+                                        text = { Text("${speed}x") },
+                                        onClick = {
+                                            onSelectSpeed(speed)
+                                            onToggleSpeedMenu(false)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
 
-                IconButton(onClick = onPrevious, enabled = playbackState.currentAyah != null) {
-                    Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous Ayah")
-                }
-
-                IconButton(
-                    onClick = onPlayPause,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary)
-                        .testTag("online_audio_play_pause")
-                ) {
-                    if (playbackState.isLoading) {
-                        CircularProgressIndicator(modifier = Modifier.size(22.dp), color = Color.White, strokeWidth = 2.dp)
-                    } else {
-                        Icon(
-                            imageVector = if (playbackState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                            contentDescription = if (playbackState.isPlaying) "Pause" else "Play",
-                            tint = Color.White
+                // Row 2: Seekbar + Live Timestamps
+                if (playbackState.isPlaying || playbackState.isPaused || playbackState.durationMs > 0) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = formatAudioMs(playbackState.currentPositionMs),
+                            fontSize = 10.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                        Slider(
+                            value = playbackState.playbackProgress,
+                            onValueChange = onSeek,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(28.dp)
+                                .padding(horizontal = 6.dp)
+                        )
+                        Text(
+                            text = formatAudioMs(playbackState.durationMs),
+                            fontSize = 10.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
 
-                IconButton(onClick = onNext, enabled = playbackState.currentAyah != null) {
-                    Icon(Icons.Filled.SkipNext, contentDescription = "Next Ayah")
-                }
-
-                IconButton(
-                    onClick = onStopAndSave,
-                    enabled = playbackState.isPlaying || playbackState.isPaused,
-                    modifier = Modifier.testTag("online_audio_stop_save")
+                // Row 3: Centered Transport Controls (guaranteed fit on 320dp–tablets without clipping)
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 360.dp)
+                        .align(Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.Stop,
-                        contentDescription = "Stop & Save Position",
-                        tint = if (playbackState.isPlaying || playbackState.isPaused) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline
-                    )
+                    IconButton(
+                        onClick = onPrevious,
+                        enabled = playbackState.currentAyah != null,
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.SkipPrevious,
+                            contentDescription = "Previous Ayah",
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onPlayPause,
+                        modifier = Modifier
+                            .size(50.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary)
+                            .testTag("online_audio_play_pause")
+                    ) {
+                        if (playbackState.isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(22.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = if (playbackState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                contentDescription = if (playbackState.isPlaying) "Pause" else "Play",
+                                tint = Color.White,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = onNext,
+                        enabled = playbackState.currentAyah != null,
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.SkipNext,
+                            contentDescription = "Next Ayah",
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onStopAndSave,
+                        enabled = playbackState.isPlaying || playbackState.isPaused,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("online_audio_stop_save")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Stop,
+                            contentDescription = "Stop & Save Position",
+                            tint = if (playbackState.isPlaying || playbackState.isPaused) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
             }
         }

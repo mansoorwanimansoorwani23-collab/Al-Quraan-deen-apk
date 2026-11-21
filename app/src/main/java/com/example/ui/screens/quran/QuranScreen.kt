@@ -35,6 +35,7 @@ import com.example.ui.MainViewModel
 import com.example.ui.components.LiquidGlassCard
 import com.example.ui.components.LiquidGlassSegmentedTabs
 import com.example.ui.components.LiquidGlassTextField
+import com.example.ui.components.LocalBottomDockPadding
 import com.example.ui.theme.*
 
 /**
@@ -67,11 +68,13 @@ fun QuranScreen(
     }
 
     val bookmarkCount = remember(bookmarks) { bookmarks.count { it.type == "QURAN" } }
+    val bottomDockPadding = LocalBottomDockPadding.current
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Transparent)
+            .imePadding()
     ) {
         // Pure Liquid Glass Quran Header + Search + iOS 26 Segmented Pill Tabs (Zero audio/video)
         LiquidGlassCard(
@@ -200,7 +203,7 @@ fun QuranScreen(
         when (selectedTab) {
             0 -> {
                 LazyColumn(
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 118.dp),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = bottomDockPadding + 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(filteredSurahs, key = { it.number }) { surah ->
@@ -215,7 +218,7 @@ fun QuranScreen(
 
             1 -> {
                 LazyColumn(
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 118.dp),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = bottomDockPadding + 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(IslamicDataSource.JUZ_DEFINITIONS, key = { it.juzNumber }) { juzInfo ->
@@ -294,7 +297,7 @@ fun QuranScreen(
                     }
                 } else {
                     LazyColumn(
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 118.dp),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = bottomDockPadding + 16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(quranBookmarks, key = { it.id }) { b ->

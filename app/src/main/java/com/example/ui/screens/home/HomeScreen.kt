@@ -34,6 +34,7 @@ import com.example.ui.HomeUiState
 import com.example.ui.MainViewModel
 import com.example.ui.components.IslamicBannerCard
 import com.example.ui.components.LiquidGlassCard
+import com.example.ui.components.LocalBottomDockPadding
 import com.example.ui.components.MakkahMadinahLiveCard
 import com.example.ui.components.SectionHeader
 import com.example.ui.components.rememberLiquidGlassPalette
@@ -60,21 +61,23 @@ fun HomeScreen(
         }
     }
 
+    val bottomDockPadding = LocalBottomDockPadding.current
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Transparent)
             .padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(top = 14.dp, bottom = 112.dp),
+        contentPadding = PaddingValues(top = 14.dp, bottom = bottomDockPadding + 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 0. Top Brand & Developer Identity Header — "Developed by Rauf" highlighted at top-left
+        // 0. Compact Brand & Greeting Header — "Developed by Rauf" highlighted at top-left
         item {
             LiquidGlassCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("hidayah_top_brand_header"),
-                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp)
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -87,7 +90,6 @@ fun HomeScreen(
                             .padding(end = 10.dp),
                         horizontalAlignment = Alignment.Start
                     ) {
-                        // Highlighted "Developed by Rauf" badge at top-left in premium font
                         Surface(
                             shape = RoundedCornerShape(10.dp),
                             color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f),
@@ -109,7 +111,7 @@ fun HomeScreen(
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 0.6.sp,
                                 color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                             )
                         }
 
@@ -119,34 +121,42 @@ fun HomeScreen(
                             Text(
                                 text = "Hidayah",
                                 fontFamily = BrandDisplayFontFamily,
-                                fontSize = 24.sp,
+                                fontSize = 22.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "v2.0",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(bottom = 4.dp)
+                                modifier = Modifier.padding(bottom = 3.dp)
                             )
                         }
+
+                        Text(
+                            text = "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
+                            fontFamily = AmiriArabicFontFamily,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
 
                     // Optional Profile Quick Badge
                     Surface(
                         modifier = Modifier
+                            .defaultMinSize(minHeight = 44.dp)
                             .clip(RoundedCornerShape(14.dp))
                             .clickable { onNavigateToScreen(Screen.Settings.route) }
                             .testTag("home_profile_badge"),
                         shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
                     ) {
                         if (uiState.userSettings.hasCustomProfile && uiState.userSettings.profileName.isNotBlank()) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
@@ -163,7 +173,7 @@ fun HomeScreen(
                             }
                         } else {
                             Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
@@ -175,7 +185,7 @@ fun HomeScreen(
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = "Profile",
-                                    fontSize = 11.sp,
+                                    fontSize = 12.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.primary
                                 )
@@ -186,31 +196,31 @@ fun HomeScreen(
             }
         }
 
-        // 1. Hero Date & Hijri Header Card
+        // 1. Next Prayer Countdown Card (Immediately visible on launch!)
         item {
-            IslamicBannerCard(
-                title = uiState.hijriDate?.formatShort() ?: "Hijri Calendar",
-                subtitle = "${uiState.gregorianDateText} • ${uiState.userSettings.cityName}",
-                arabicGreeting = "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
-                icon = Icons.Filled.Mosque
+            NextPrayerCountdownCard(
+                uiState = uiState,
+                timeFormat = timeFormat,
+                onViewPrayerSchedule = { onNavigateToScreen(Screen.Prayer.route) }
             )
         }
 
-        // Makkah & Madinah Live Visual
+        // 2. Quick Action Shortcuts (Quran, Hidayah AI, Salah, Qibla, Tasbeeh, Duas, Hadith)
         item {
-            MakkahMadinahLiveCard(
-                onNavigateToQibla = { onNavigateToDiscoverTab(DiscoverTab.QIBLA) }
+            QuickActionGrid(
+                onNavigateToScreen = onNavigateToScreen,
+                onNavigateToDiscoverTab = onNavigateToDiscoverTab
             )
         }
 
-        // Search Bar Tile on Dashboard
+        // 3. Search Bar Tile on Dashboard
         item {
             LiquidGlassCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { onNavigateToScreen(Screen.Search.route) }
                     .testTag("dashboard_search_bar"),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 13.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -231,10 +241,11 @@ fun HomeScreen(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "Tap to explore authentic Islamic knowledge",
+                            text = "${uiState.hijriDate?.formatShort() ?: "Hijri"} • ${uiState.gregorianDateText}",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            softWrap = true
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                     Surface(
@@ -253,23 +264,6 @@ fun HomeScreen(
             }
         }
 
-        // 2. Next Prayer Countdown Card
-        item {
-            NextPrayerCountdownCard(
-                uiState = uiState,
-                timeFormat = timeFormat,
-                onViewPrayerSchedule = { onNavigateToScreen(Screen.Prayer.route) }
-            )
-        }
-
-        // 3. Quick Action Buttons (including Offline Quran, Online Audio, Practice, Learn Salah)
-        item {
-            QuickActionGrid(
-                onNavigateToScreen = onNavigateToScreen,
-                onNavigateToDiscoverTab = onNavigateToDiscoverTab
-            )
-        }
-
         // 4. Today's Deen Progress Tracker Card
         item {
             TodayDeenProgressCard(
@@ -277,6 +271,13 @@ fun HomeScreen(
                 uiState = uiState,
                 onTogglePrayer = { viewModel.togglePrayer(it) },
                 onViewFullTracker = { onNavigateToScreen(Screen.Tracker.route) }
+            )
+        }
+
+        // 5. Makkah & Madinah Live Visual
+        item {
+            MakkahMadinahLiveCard(
+                onNavigateToQibla = { onNavigateToDiscoverTab(DiscoverTab.QIBLA) }
             )
         }
 

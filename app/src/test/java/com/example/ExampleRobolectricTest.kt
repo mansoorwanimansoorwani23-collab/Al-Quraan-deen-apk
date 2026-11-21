@@ -223,4 +223,19 @@ class ExampleRobolectricTest {
         val delta = com.example.ai.GeminiAiService.extractTextDeltaFromJson(sseJson)
         assertEquals("Bismillah! Here is your answer.", delta)
     }
+
+    @Test
+    fun `speech sanitizer strips slashes symbols and markdown so TTS never speaks slash or formatting noise`() {
+        val noisy = "### Morning / Evening Dua\n**Step 1:** Read Surah Al-Ikhlas / Al-Falaq | Al-Nas (3 times) [Ref: Sahih] ✨\n" +
+            "- Check https://example.com/test\\path for more info ---"
+        val cleaned = com.example.ai.GeminiAiService.cleanTextForSpeech(noisy)
+
+        assertTrue("Must not contain forward slash", !cleaned.contains("/"))
+        assertTrue("Must not contain backslash", !cleaned.contains("\\"))
+        assertTrue("Must not contain pipe or brackets", !cleaned.contains("|") && !cleaned.contains("[") && !cleaned.contains("]"))
+        assertTrue("Must not contain markdown asterisks or hashes", !cleaned.contains("*") && !cleaned.contains("#"))
+        assertTrue("Must not contain URLs", !cleaned.contains("https://"))
+        assertTrue("Must not contain 'Read aloud' prefix", !cleaned.contains("Read aloud", ignoreCase = true))
+        assertTrue("Must preserve meaningful spoken words", cleaned.contains("Morning") && cleaned.contains("Evening Dua"))
+    }
 }

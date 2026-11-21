@@ -48,6 +48,7 @@ import com.example.domain.calculator.Madhhab
 import com.example.ui.MainViewModel
 import com.example.ui.components.LiquidGlassCard
 import com.example.ui.components.LiquidGlassDialog
+import com.example.ui.components.LocalBottomDockPadding
 import com.example.ui.components.LiquidGlassTextField
 import com.example.ui.components.SectionHeader
 import com.example.ui.theme.*
@@ -134,12 +135,15 @@ fun SettingsScreen(
         }
     }
 
+    val bottomDockPadding = LocalBottomDockPadding.current
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Transparent)
+            .imePadding()
             .padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(top = 14.dp, bottom = 116.dp),
+        contentPadding = PaddingValues(top = 14.dp, bottom = bottomDockPadding + 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // 1. App Appearance: Liquid Glass & Islamic Themes

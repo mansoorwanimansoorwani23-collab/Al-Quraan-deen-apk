@@ -40,6 +40,7 @@ import com.example.ui.MainViewModel
 import com.example.ui.components.IslamicBannerCard
 import com.example.ui.components.LiquidGlassCard
 import com.example.ui.components.LiquidGlassDialog
+import com.example.ui.components.LocalBottomDockPadding
 import com.example.ui.components.SectionHeader
 import java.text.SimpleDateFormat
 import java.util.*
@@ -121,13 +122,14 @@ fun PrayerScreen(
     }
 
     val result = homeState.prayerTimes
+    val bottomDockPadding = LocalBottomDockPadding.current
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Transparent)
             .padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(top = 16.dp, bottom = 112.dp),
+        contentPadding = PaddingValues(top = 16.dp, bottom = bottomDockPadding + 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Location & Calculation Info Banner (Liquid Glass with safe padding)

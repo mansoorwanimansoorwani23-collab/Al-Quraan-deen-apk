@@ -50,6 +50,12 @@ import com.example.ui.navigation.Screen
 import com.example.ui.theme.*
 
 /**
+ * Exact measured bottom clearance occupied by the floating Liquid Glass dock + system navigation bar.
+ * Automatically becomes 0.dp while the soft keyboard (IME) is open so inputs can sit directly above the keyboard.
+ */
+val LocalBottomDockPadding = compositionLocalOf { 104.dp }
+
+/**
  * Shared visual tokens computed dynamically for the active Liquid Glass / Islamic theme.
  */
 @Composable
@@ -305,18 +311,28 @@ fun LiquidGlassFloatingDock(
         label = "more_circle_scale"
     )
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .navigationBarsPadding(),
         contentAlignment = Alignment.Center
     ) {
+        val isCompactWidth = maxWidth < 380.dp
+        val outerHorizontalPadding = if (isCompactWidth) 10.dp else 14.dp
+        val outerVerticalPadding = if (isCompactWidth) 8.dp else 10.dp
+        val dockGap = if (isCompactWidth) 7.dp else 10.dp
+        val pillInnerPadding = if (isCompactWidth) 4.dp else 6.dp
+        val tabMinHeight = if (isCompactWidth) 48.dp else 52.dp
+        val iconSize = if (isCompactWidth) 20.dp else 22.dp
+        val labelFontSize = if (isCompactWidth) 10.sp else 11.sp
+        val moreCircleSize = if (isCompactWidth) 54.dp else 60.dp
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 560.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                .widthIn(max = 560.dp)
+                .padding(horizontal = outerHorizontalPadding, vertical = outerVerticalPadding),
+            horizontalArrangement = Arrangement.spacedBy(dockGap),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // 1. Main 4-Tab Floating Liquid Glass Pill Capsule
@@ -333,7 +349,7 @@ fun LiquidGlassFloatingDock(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(topGlassSheen)
-                        .padding(horizontal = 6.dp, vertical = 6.dp)
+                        .padding(horizontal = pillInnerPadding, vertical = pillInnerPadding)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -369,7 +385,7 @@ fun LiquidGlassFloatingDock(
                                 modifier = Modifier
                                     .weight(1f)
                                     .scale(itemScale)
-                                    .defaultMinSize(minHeight = 52.dp)
+                                    .defaultMinSize(minHeight = tabMinHeight)
                                     .clip(RoundedCornerShape(26.dp))
                                     .background(activeBubbleColor)
                                     .then(
@@ -387,7 +403,7 @@ fun LiquidGlassFloatingDock(
                                         interactionSource = tabInteraction,
                                         indication = ripple(bounded = true, color = MaterialTheme.colorScheme.primary)
                                     ) { onSelect(screen) }
-                                    .padding(horizontal = 4.dp, vertical = 6.dp)
+                                    .padding(horizontal = if (isCompactWidth) 2.dp else 4.dp, vertical = 5.dp)
                                     .testTag("nav_item_${screen.route}"),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -399,15 +415,16 @@ fun LiquidGlassFloatingDock(
                                         imageVector = if (isSelected) screen.filledIcon else screen.outlinedIcon,
                                         contentDescription = screen.title,
                                         tint = tintColor,
-                                        modifier = Modifier.size(22.dp)
+                                        modifier = Modifier.size(iconSize)
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
                                         text = screen.title,
-                                        fontSize = 11.sp,
+                                        fontSize = labelFontSize,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                         color = tintColor,
                                         maxLines = 1,
+                                        softWrap = false,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                 }
@@ -420,7 +437,7 @@ fun LiquidGlassFloatingDock(
             // 2. Detached Right-Side Circular Liquid Glass "More" Button
             Surface(
                 modifier = Modifier
-                    .size(60.dp)
+                    .size(moreCircleSize)
                     .scale(moreScale)
                     .clip(CircleShape)
                     .clickable(
@@ -452,14 +469,15 @@ fun LiquidGlassFloatingDock(
                             imageVector = if (isDrawerOpen) Icons.Filled.Close else Icons.Filled.GridView,
                             contentDescription = "More options",
                             tint = if (isDrawerOpen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier.size(iconSize)
                         )
                         Text(
                             text = "More",
-                            fontSize = 9.sp,
+                            fontSize = if (isCompactWidth) 8.5.sp else 9.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isDrawerOpen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }

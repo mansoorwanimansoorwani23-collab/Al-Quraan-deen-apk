@@ -55,6 +55,7 @@ import com.example.ui.components.LiquidGlassCard
 import com.example.ui.components.LiquidGlassIconButton
 import com.example.ui.components.LiquidGlassTextField
 import com.example.ui.components.LiquidGlassTopBarSurface
+import com.example.ui.components.LocalBottomDockPadding
 import com.example.ui.components.SectionHeader
 import com.example.ui.navigation.DiscoverTab
 import com.example.ui.navigation.Screen
@@ -528,11 +529,13 @@ private fun IdleSearchExploreView(
     onSelectTopic: (String) -> Unit,
     onClearHistory: () -> Unit
 ) {
+    val bottomDockPadding = LocalBottomDockPadding.current
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
+            .imePadding()
             .padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(top = 8.dp, bottom = 114.dp),
+        contentPadding = PaddingValues(top = 8.dp, bottom = bottomDockPadding + 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         if (searchHistory.isNotEmpty()) {
@@ -669,11 +672,13 @@ private fun SearchResultsListView(
     onCopyText: (String) -> Unit,
     onShareText: (String, String, String) -> Unit
 ) {
+    val bottomDockPadding = LocalBottomDockPadding.current
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
+            .imePadding()
             .padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(top = 12.dp, bottom = 114.dp),
+        contentPadding = PaddingValues(top = 12.dp, bottom = bottomDockPadding + 16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {

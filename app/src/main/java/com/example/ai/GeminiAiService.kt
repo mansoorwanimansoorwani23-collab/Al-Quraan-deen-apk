@@ -760,18 +760,43 @@ object GeminiAiService {
     }
 
     /**
-     * Strips markdown formatting symbols so voice synthesis reads naturally and quickly.
+     * Deep speech sanitizer: strips markdown, URLs, slashes (/ and \), pipes, brackets,
+     * emojis, and non-spoken technical symbols so TTS NEVER reads "slash", "shift",
+     * "asterisk", or formatting noise aloud. Preserves natural English, Hindi, Urdu & Arabic text.
      */
     internal fun cleanTextForSpeech(rawText: String): String {
         return rawText
+            // Remove fenced code blocks and URLs
             .replace(Regex("```[\\s\\S]*?```"), " ")
-            .replace(Regex("[*_~`#>]+"), "")
+            .replace(Regex("https?://\\S+"), " ")
+            // Convert markdown links [label](url) -> label
             .replace(Regex("\\[([^\\]]+)]\\([^)]+\\)"), "$1")
-            .replace(Regex("^\\s*[-•+]\\s+", RegexOption.MULTILINE), "")
-            .replace(Regex("[ \\t]+"), " ")
+            // Strip markdown formatting characters & technical symbols
+            .replace(Regex("[*_~`#>|<>{}\\[\\]^\\\\]+"), " ")
+            // Replace forward slashes with natural space so TTS never says "slash"
+            .replace("/", " ")
+            // Replace dashes / em-dashes / bullets with clean pauses
+            .replace(Regex("[•●▪▫◆◇★☆→←↑↓⇒⇐]+"), ", ")
+            .replace(Regex("\\s*[-–—]{2,}\\s*"), ". ")
+            .replace(Regex("^\\s*[-–—+]\\s+", RegexOption.MULTILINE), "")
+            // Remove standalone colons at end of headings/labels
+            .replace(Regex(":\\s*\\n"), ". ")
+            .replace(":", ", ")
+            // Strip emojis & pictographic symbols that TTS pronounces awkwardly
+            .replace(Regex("[\\uD83C-\\uDBFF\\uDC00-\\uDFFF]+"), " ")
+            .replace(Regex("[\\u2600-\\u27BF]+"), " ")
+            // Clean parentheses without removing inner words
+            .replace("(", ", ")
+            .replace(")", ", ")
+            // Collapse repeated punctuation and extra whitespace
+            .replace(Regex("\\.{2,}"), ".")
+            .replace(Regex(",\\s*,+"), ",")
+            .replace(Regex("\\.\\s*,+"), ".")
             .replace(Regex("\\n{2,}"), ". ")
             .replace("\n", " ")
+            .replace(Regex("\\s{2,}"), " ")
             .trim()
+            .trim(',', ' ')
     }
 
     /**
@@ -1020,18 +1045,32 @@ object GeminiAiService {
         }
     }
 
-    private suspend fun fetchAudioChunkWithCache(
+    internal fun isModelKnownWithoutNativeAudio(modelId: String): Boolean {
+        val clean = modelId.removePrefix("models/").trim()
+        return clean.isBlank() || modelsWithoutNativeAudio.contains(clean)
+    }
+
+    internal fun markModelWithoutNativeAudio(modelId: String) {
+        val clean = modelId.removePrefix("models/").trim()
+        if (clean.isNotBlank()) modelsWithoutNativeAudio.add(clean)
+    }
+
+    internal suspend fun fetchAudioChunkWithCache(
         cleanKey: String,
         cleanModel: String,
         chunkText: String,
         voiceName: String
     ): GeminiAudioResult {
-        val cacheKey = "$cleanModel|$voiceName|${chunkText.hashCode()}|${chunkText.length}"
+        val cleanChunk = cleanTextForSpeech(chunkText)
+        if (cleanChunk.isBlank()) {
+            return GeminiAudioResult.Error("No speakable text.")
+        }
+        val cacheKey = "$cleanModel|$voiceName|${cleanChunk.hashCode()}|${cleanChunk.length}"
         getCachedPcm(cacheKey)?.let { cached ->
             return GeminiAudioResult.NativePcmAudio(cached.pcmBytes, cached.sampleRateHz, cached.modelId)
         }
 
-        val result = generateAudioRead(cleanKey, cleanModel, chunkText, voiceName)
+        val result = generateAudioRead(cleanKey, cleanModel, cleanChunk, voiceName)
         if (result is GeminiAudioResult.NativePcmAudio) {
             putCachedPcm(cacheKey, CachedPcmClip(result.pcmBytes, result.sampleRateHz, result.modelId))
         }
@@ -1040,7 +1079,8 @@ object GeminiAiService {
 
     /**
      * Generates spoken audio using the user's selected Gemini Audio Read model.
-     * Uses compact prompt + tuned audioClient + fast retry for minimal synthesis latency.
+     * IMPORTANT: Sends ONLY the clean spoken text (NO 'Read aloud' instruction prefix)
+     * so Gemini TTS never speaks instruction words aloud!
      */
     suspend fun generateAudioRead(
         apiKey: String,
@@ -1061,7 +1101,7 @@ object GeminiAiService {
         if (cleanModel.isBlank()) {
             return@withContext GeminiAudioResult.FallbackToDeviceTts(
                 textToSpeak = cleanText,
-                note = "No Voice model selected. Playing via instant device voice."
+                note = "Playing with device voice"
             )
         }
 
@@ -1069,6 +1109,7 @@ object GeminiAiService {
             val encodedKey = URLEncoder.encode(cleanKey, "UTF-8")
             val url = "$BASE_URL/models/$cleanModel:generateContent?key=$encodedKey"
 
+            // Pass ONLY the pure sanitized text — zero "Read aloud" prefix!
             val payload = JSONObject().apply {
                 put(
                     "contents",
@@ -1076,7 +1117,7 @@ object GeminiAiService {
                         JSONObject().put(
                             "parts",
                             JSONArray().put(
-                                JSONObject().put("text", "Read aloud clearly:\n$cleanText")
+                                JSONObject().put("text", cleanText)
                             )
                         )
                     )
