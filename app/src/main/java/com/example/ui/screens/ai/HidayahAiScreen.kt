@@ -1,11 +1,19 @@
 package com.example.ui.screens.ai
 
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -29,6 +37,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -47,9 +56,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.ai.AiProvider
+import com.example.ai.DetectedClipboardKey
 import com.example.ai.GeminiAiService
 import com.example.ai.GeminiModelCategory
 import com.example.ai.GeminiModelInfo
+import com.example.ai.MultiAiProviderService
 import com.example.ui.MainViewModel
 import com.example.ui.components.LiquidGlassCard
 import com.example.ui.components.LiquidGlassDialog
@@ -59,7 +75,12 @@ import com.example.ui.components.LiquidGlassTextField
 import com.example.ui.components.LocalBottomDockPadding
 import com.example.ui.theme.BrandDisplayFontFamily
 
-private const val GEMINI_API_KEY_URL = "https://aistudio.google.com/app/apikey"
+private val VOICE_INPUT_LANGUAGES = listOf(
+    "hi-IN" to "Hindi / Hinglish",
+    "en-US" to "English",
+    "ur-PK" to "Urdu (اردو)",
+    "ar-SA" to "Arabic (عربي)"
+)
 
 @Composable
 fun HidayahAiScreen(
@@ -67,6 +88,7 @@ fun HidayahAiScreen(
     onOpenSettings: () -> Unit
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val settings by viewModel.userSettings.collectAsState()
     val availableModels by viewModel.availableGeminiModels.collectAsState()
     val isFetchingModels by viewModel.isFetchingGeminiModels.collectAsState()
@@ -78,17 +100,38 @@ fun HidayahAiScreen(
     var selectedModeTab by remember { mutableStateOf(0) } // 0 = Chat, 1 = Voice Reader
     var promptInput by remember { mutableStateOf("") }
     var audioTextInput by remember { mutableStateOf("") }
-    var apiKeyDraft by remember(settings.geminiApiKey) { mutableStateOf(settings.geminiApiKey) }
+
+    // Onboarding Multi-AI setup drafts (when no key configured yet)
+    var setupProvider by remember { mutableStateOf(AiProvider.fromId(settings.activeAiProvider)) }
+    var setupKey1 by remember(setupProvider) { mutableStateOf(settings.getKeysForProvider(setupProvider)[0]) }
+    var setupKey2 by remember(setupProvider) { mutableStateOf(settings.getKeysForProvider(setupProvider)[1]) }
+    var setupKey3 by remember(setupProvider) { mutableStateOf(settings.getKeysForProvider(setupProvider)[2]) }
+    var showExtraFallbackInputs by remember { mutableStateOf(false) }
     var showApiKeyPlain by remember { mutableStateOf(false) }
 
-    // Guided 3-step setup pop-up state: Step 0 = Text Model, Step 1 = Voice Model, Step 2 = Voice (Male/Female)
+    // Option 3: Clipboard Auto-Detect API Key state
+    var detectedClipboardKey by remember { mutableStateOf<DetectedClipboardKey?>(null) }
+    var dismissedClipboardKeyValue by remember { mutableStateOf<String?>(null) }
+
+    // Voice-to-AI Messaging state (SpeechRecognizer)
+    var isVoiceListening by remember { mutableStateOf(false) }
+    var liveVoiceTranscript by remember { mutableStateOf("") }
+    var voiceInputLangTag by remember { mutableStateOf("hi-IN") }
+    var speechRecognizer by remember { mutableStateOf<SpeechRecognizer?>(null) }
+
+    // Dialog states
     var showModelSetupPopup by remember { mutableStateOf(false) }
     var setupWizardInitialStep by remember { mutableStateOf(0) }
-    var showApiKeyChangeDialog by remember { mutableStateOf(false) }
+    var showMultiAiDialog by remember { mutableStateOf(false) }
 
     val chatListState = rememberLazyListState()
 
-    val hasApiKey = settings.geminiApiKey.isNotBlank()
+    val hasAnyAiKey = settings.hasAnyAiApiKey()
+    val activeProvider = AiProvider.fromId(settings.activeAiProvider)
+    val activeProviderKeyCount = settings.getConfiguredKeysForProvider(activeProvider).size
+    val totalKeysCount = settings.totalConfiguredAiKeys()
+    val hasGeminiKey = settings.getConfiguredKeysForProvider(AiProvider.GEMINI).isNotEmpty()
+
     val textModels = remember(availableModels) {
         availableModels.filter { it.category == GeminiModelCategory.TEXT_GENERATION }
     }
@@ -101,7 +144,158 @@ fun HidayahAiScreen(
             ?: GeminiAiService.VOICE_OPTIONS.first()
     }
 
-    // Pre-warm HTTP/2 TLS socket + fallback TTS engine on screen entry
+    fun checkClipboardForApiKey() {
+        runCatching {
+            val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clipText = cm.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()
+            val detected = MultiAiProviderService.detectClipboardApiKey(clipText)
+            if (detected != null &&
+                detected.apiKey != dismissedClipboardKeyValue &&
+                !settings.containsApiKey(detected.apiKey)
+            ) {
+                detectedClipboardKey = detected
+            } else {
+                detectedClipboardKey = null
+            }
+        }
+    }
+
+    // Automatically scan clipboard on screen launch & whenever user returns from browser/AI Studio
+    LaunchedEffect(settings) {
+        checkClipboardForApiKey()
+    }
+
+    DisposableEffect(lifecycleOwner, settings) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                checkClipboardForApiKey()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            runCatching { speechRecognizer?.destroy() }
+            speechRecognizer = null
+        }
+    }
+
+    fun stopVoiceRecording(cancelOnly: Boolean = false) {
+        runCatching {
+            if (cancelOnly) speechRecognizer?.cancel() else speechRecognizer?.stopListening()
+        }
+        isVoiceListening = false
+        if (cancelOnly) {
+            liveVoiceTranscript = ""
+        }
+    }
+
+    fun startVoiceMessageRecording() {
+        if (!SpeechRecognizer.isRecognitionAvailable(context)) {
+            Toast.makeText(context, "Voice input is not available on this device", Toast.LENGTH_SHORT).show()
+            return
+        }
+        viewModel.stopAiAudioPlayback()
+        liveVoiceTranscript = ""
+        isVoiceListening = true
+
+        try {
+            speechRecognizer?.destroy()
+            val recognizer = SpeechRecognizer.createSpeechRecognizer(context)
+            speechRecognizer = recognizer
+
+            recognizer.setRecognitionListener(object : RecognitionListener {
+                override fun onReadyForSpeech(params: Bundle?) {
+                    isVoiceListening = true
+                }
+
+                override fun onBeginningOfSpeech() {}
+                override fun onRmsChanged(rmsdB: Float) {}
+                override fun onBufferReceived(buffer: ByteArray?) {}
+                override fun onEndOfSpeech() {
+                    isVoiceListening = false
+                }
+
+                override fun onError(error: Int) {
+                    isVoiceListening = false
+                    val pending = liveVoiceTranscript.trim()
+                    if (pending.isNotBlank()) {
+                        liveVoiceTranscript = ""
+                        viewModel.sendAiChatPrompt(pending, isVoiceMessage = true)
+                    } else if (error != SpeechRecognizer.ERROR_CLIENT && error != SpeechRecognizer.ERROR_NO_MATCH) {
+                        Toast.makeText(context, "Could not hear clearly. Tap Mic to try again.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
+                override fun onResults(results: Bundle?) {
+                    isVoiceListening = false
+                    val spoken = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        ?.firstOrNull()?.trim().orEmpty()
+                        .ifBlank { liveVoiceTranscript.trim() }
+                    liveVoiceTranscript = ""
+                    if (spoken.isNotBlank()) {
+                        viewModel.sendAiChatPrompt(spoken, isVoiceMessage = true)
+                    }
+                }
+
+                override fun onPartialResults(partialResults: Bundle?) {
+                    val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                    if (!partial.isNullOrBlank()) {
+                        liveVoiceTranscript = partial
+                    }
+                }
+
+                override fun onEvent(eventType: Int, params: Bundle?) {}
+            })
+
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, voiceInputLangTag)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, voiceInputLangTag)
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            }
+            recognizer.startListening(intent)
+        } catch (_: Exception) {
+            isVoiceListening = false
+            Toast.makeText(context, "Unable to start microphone", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            startVoiceMessageRecording()
+        } else {
+            Toast.makeText(context, "Microphone permission is required for voice messages", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun requestOrToggleVoiceRecording() {
+        if (isVoiceListening) {
+            val captured = liveVoiceTranscript.trim()
+            stopVoiceRecording(cancelOnly = false)
+            if (captured.isNotBlank()) {
+                liveVoiceTranscript = ""
+                viewModel.sendAiChatPrompt(captured, isVoiceMessage = true)
+            }
+            return
+        }
+        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            startVoiceMessageRecording()
+        } else {
+            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    // Pre-warm HTTP/2 TLS sockets + fallback TTS engine on screen entry
     LaunchedEffect(Unit) {
         viewModel.warmUpAiNetwork()
     }
@@ -117,15 +311,15 @@ fun HidayahAiScreen(
         }
     }
 
-    fun openGetGeminiKeyPage() {
+    fun openProviderKeyPage(provider: AiProvider) {
         try {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(GEMINI_API_KEY_URL))
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(provider.consoleUrl))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
         } catch (_: Exception) {
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            clipboard.setPrimaryClip(ClipData.newPlainText("Gemini API Key URL", GEMINI_API_KEY_URL))
-            Toast.makeText(context, "Copied API Key link: aistudio.google.com/app/apikey", Toast.LENGTH_LONG).show()
+            clipboard.setPrimaryClip(ClipData.newPlainText("${provider.shortName} API Key URL", provider.consoleUrl))
+            Toast.makeText(context, "Copied link: ${provider.consoleUrl}", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -161,7 +355,7 @@ fun HidayahAiScreen(
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Compact, User-Friendly Header Bar (gives maximum room to chat & voice controls)
+            // Clean "Hidayah AI" Front Header (Multi-AI + 3-Key Fallback powered seamlessly underneath)
             LiquidGlassCard(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -169,278 +363,448 @@ fun HidayahAiScreen(
                 shape = RoundedCornerShape(20.dp),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
             ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primaryContainer),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.AutoAwesome,
-                            contentDescription = "Hidayah AI",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Hidayah AI",
-                            fontFamily = BrandDisplayFontFamily,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            maxLines = 1
-                        )
-                        Text(
-                            text = if (hasApiKey) {
-                                "${activeVoiceOption.name} (${activeVoiceOption.gender}) • Tap Models to change"
-                            } else {
-                                "Connect your Gemini API key below"
-                            },
-                            fontSize = 11.5.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    if (hasApiKey) {
-                        Surface(
-                            modifier = Modifier
-                                .defaultMinSize(minHeight = 40.dp)
-                                .clip(RoundedCornerShape(14.dp))
-                                .clickable {
-                                    setupWizardInitialStep = 0
-                                    if (availableModels.isEmpty()) {
-                                        viewModel.refreshGeminiModels { ok ->
-                                            if (ok) showModelSetupPopup = true
-                                        }
-                                    } else {
-                                        showModelSetupPopup = true
-                                    }
-                                }
-                                .testTag("ai_open_model_wizard_button"),
-                            shape = RoundedCornerShape(14.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.30f))
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Tune,
-                                    contentDescription = "Select AI Models & Voice",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(5.dp))
-                                Text(
-                                    text = "Models",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-                    }
-
-                    LiquidGlassIconButton(
-                        onClick = {
-                            if (hasApiKey) showApiKeyChangeDialog = true else onOpenSettings()
-                        },
-                        icon = if (hasApiKey) Icons.Filled.Key else Icons.Filled.Settings,
-                        contentDescription = "Manage Gemini API Key",
-                        size = 40.dp,
-                        tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.testTag("ai_open_settings_button")
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        if (!hasApiKey) {
-            // Direct In-Screen Gemini API Key Setup Card (Triggers 3-Step Model & Voice Setup Pop-up)
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState())
-                    .padding(bottom = 16.dp),
-                verticalArrangement = Arrangement.Center
-            ) {
-                LiquidGlassCard(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("ai_api_key_required_card"),
-                    contentPadding = PaddingValues(22.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                         Box(
                             modifier = Modifier
-                                .size(62.dp)
+                                .size(38.dp)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.primaryContainer),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.Key,
-                                contentDescription = null,
+                                imageVector = Icons.Filled.AutoAwesome,
+                                contentDescription = "Hidayah AI",
                                 tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(30.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                         }
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Text(
-                            text = "Connect Gemini AI",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "Enter your Gemini API key below. Right after saving, a quick 3-step pop-up lets you select your Text Model, Voice Model, and Male/Female Voice.",
-                            fontSize = 13.sp,
-                            lineHeight = 20.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                            softWrap = true
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Hidayah AI",
+                                fontFamily = BrandDisplayFontFamily,
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1
+                            )
+                            Text(
+                                text = if (hasAnyAiKey) {
+                                    "${activeProvider.shortName} ($activeProviderKeyCount/3) • $totalKeysCount Total Keys • ${activeVoiceOption.name}"
+                                } else {
+                                    "Multi-AI Ready (Gemini, Grok, OpenAI, Claude)"
+                                },
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
 
-                        LiquidGlassTextField(
-                            value = apiKeyDraft,
-                            onValueChange = { apiKeyDraft = it },
-                            label = "Gemini API Key",
-                            placeholder = "AIzaSy...",
-                            singleLine = true,
-                            visualTransformation = if (showApiKeyPlain) {
-                                VisualTransformation.None
-                            } else {
-                                PasswordVisualTransformation()
-                            },
-                            trailingIcon = {
-                                IconButton(onClick = { showApiKeyPlain = !showApiKeyPlain }) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (hasAnyAiKey) {
+                            // Auto-Voice Reply toggle (Voice messages always auto-speak; toggle enables for text too)
+                            LiquidGlassIconButton(
+                                onClick = {
+                                    val next = !settings.autoPlayAiVoiceReply
+                                    viewModel.toggleAutoPlayAiVoiceReply(next)
+                                    Toast.makeText(
+                                        context,
+                                        if (next) "Auto-Voice replies ON" else "Auto-Voice for voice messages only",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                },
+                                icon = if (settings.autoPlayAiVoiceReply) {
+                                    Icons.AutoMirrored.Filled.VolumeUp
+                                } else {
+                                    Icons.AutoMirrored.Filled.VolumeOff
+                                },
+                                contentDescription = "Toggle Auto-Voice Replies",
+                                size = 38.dp,
+                                tint = if (settings.autoPlayAiVoiceReply) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                modifier = Modifier.testTag("ai_auto_voice_toggle_button")
+                            )
+
+                            Surface(
+                                modifier = Modifier
+                                    .minimumInteractiveComponentSize()
+                                    .defaultMinSize(minHeight = 38.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .clickable { showMultiAiDialog = true }
+                                    .testTag("ai_open_model_wizard_button"),
+                                shape = RoundedCornerShape(14.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.30f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
                                     Icon(
-                                        imageVector = if (showApiKeyPlain) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                        contentDescription = "Toggle key visibility"
+                                        imageVector = Icons.Filled.Hub,
+                                        contentDescription = "Manage Multi-AI Providers & 3 Keys",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "AI Keys",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("ai_inline_api_key_input")
-                        )
-
-                        if (!modelFetchError.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = modelFetchError.orEmpty(),
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.error,
-                                textAlign = TextAlign.Center,
-                                softWrap = true
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Button(
-                            onClick = {
-                                val trimmed = apiKeyDraft.trim()
-                                if (trimmed.isBlank()) {
-                                    Toast.makeText(context, "Please paste your Gemini API key first", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    viewModel.saveGeminiApiKeyAndFetchModels(trimmed) { success ->
-                                        if (success) {
-                                            setupWizardInitialStep = 0
-                                            showModelSetupPopup = true
-                                        }
-                                    }
-                                }
-                            },
-                            enabled = !isFetchingModels && apiKeyDraft.isNotBlank(),
-                            shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(52.dp)
-                                .testTag("ai_save_key_open_wizard_button")
-                        ) {
-                            if (isFetchingModels) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.onPrimary
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text("Connecting & Loading Models...", fontWeight = FontWeight.Bold)
-                            } else {
-                                Icon(Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Save Key & Choose Models", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-                        OutlinedButton(
-                            onClick = { openGetGeminiKeyPage() },
-                            shape = RoundedCornerShape(16.dp),
-                            border = BorderStroke(1.2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(50.dp)
-                                .testTag("ai_get_gemini_key_button")
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Get Your Gemini API Key Here", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        } else {
+                            LiquidGlassIconButton(
+                                onClick = { showMultiAiDialog = true },
+                                icon = Icons.Filled.Hub,
+                                contentDescription = "Multi-AI Providers & Keys",
+                                size = 40.dp,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.testTag("ai_open_settings_button")
+                            )
                         }
                     }
                 }
             }
-        } else {
-            // Simple, Friendly Mode Tabs: Chat | Voice Reader
-            LiquidGlassSegmentedTabs(
-                tabs = listOf("Ask AI", "Voice Reader"),
-                selectedIndex = selectedModeTab,
-                onSelect = { selectedModeTab = it }
-            )
+
+            // Option 3: Live 1-Tap Clipboard Auto-Detected API Key Banner
+            AnimatedVisibility(visible = detectedClipboardKey != null) {
+                detectedClipboardKey?.let { detected ->
+                    val nextSlot = settings.getKeysForProvider(detected.provider)
+                        .indexOfFirst { it.isBlank() }
+                        .let { if (it >= 0) it + 1 else 3 }
+                    LiquidGlassCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .testTag("ai_clipboard_autodetect_banner"),
+                        shape = RoundedCornerShape(18.dp),
+                        borderColor = Color(0xFF16A34A).copy(alpha = 0.55f),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.ContentPasteGo,
+                                contentDescription = null,
+                                tint = Color(0xFF16A34A),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "${detected.provider.shortName} API Key Detected!",
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF16A34A)
+                                )
+                                Text(
+                                    text = "1-Tap Save into Slot #$nextSlot (${if (nextSlot == 1) "Primary" else "Fallback ${nextSlot - 1}"})",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Button(
+                                onClick = {
+                                    viewModel.saveDetectedClipboardApiKey(detected.provider, detected.apiKey) { slot, loadedModels ->
+                                        detectedClipboardKey = null
+                                        Toast.makeText(
+                                            context,
+                                            "Saved ${detected.provider.shortName} Key #$slot automatically!",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        if (detected.provider == AiProvider.GEMINI && loadedModels && slot == 1) {
+                                            setupWizardInitialStep = 0
+                                            showModelSetupPopup = true
+                                        }
+                                    }
+                                },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.defaultMinSize(minHeight = 36.dp)
+                            ) {
+                                Text("Save", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                            }
+                            IconButton(
+                                onClick = {
+                                    dismissedClipboardKeyValue = detected.apiKey
+                                    detectedClipboardKey = null
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = "Dismiss detected key",
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Interactive Seekable Voice Player (Pause / Resume / -5s / +5s / Speed / Seekbar)
-            AnimatedVisibility(visible = voiceState.isActive || !voiceState.statusMessage.isNullOrBlank()) {
-                AiVoicePlayerBar(
-                    voiceState = voiceState,
-                    onTogglePauseResume = { viewModel.togglePauseResumeAiVoice() },
-                    onRewind = { viewModel.rewindAiVoice(5_000L) },
-                    onForward = { viewModel.forwardAiVoice(5_000L) },
-                    onSeekFraction = { viewModel.seekAiVoice(it) },
-                    onCycleSpeed = { viewModel.cycleAiVoiceSpeed() },
-                    onStop = { viewModel.stopAiAudioPlayback() },
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-            }
+            if (!hasAnyAiKey) {
+                // Direct Multi-AI Setup Card (Gemini, Grok, OpenAI, Anthropic — up to 3 Fallback Keys each + Clipboard Auto-Detect)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(bottom = 16.dp),
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    LiquidGlassCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("ai_api_key_required_card"),
+                        contentPadding = PaddingValues(20.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(58.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Hub,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "Connect Hidayah Multi-AI",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Choose Gemini, Grok (xAI), OpenAI, or Anthropic. Add up to 3 API keys per provider for automatic quota fallback — or just copy a key to auto-detect in 1 tap!",
+                                fontSize = 12.5.sp,
+                                lineHeight = 19.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                softWrap = true
+                            )
+                            Spacer(modifier = Modifier.height(14.dp))
 
-            if (selectedModeTab == 0) {
+                            // Provider Picker Chips
+                            LazyRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
+                            ) {
+                                items(AiProvider.entries) { provider ->
+                                    val selected = setupProvider == provider
+                                    FilterChip(
+                                        selected = selected,
+                                        onClick = { setupProvider = provider },
+                                        label = {
+                                            Text(
+                                                text = provider.shortName,
+                                                fontSize = 12.sp,
+                                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            val vis = if (showApiKeyPlain) VisualTransformation.None else PasswordVisualTransformation()
+                            LiquidGlassTextField(
+                                value = setupKey1,
+                                onValueChange = { setupKey1 = it },
+                                label = "${setupProvider.shortName} API Key 1 (Primary)",
+                                placeholder = setupProvider.keyHint,
+                                singleLine = true,
+                                visualTransformation = vis,
+                                trailingIcon = {
+                                    IconButton(onClick = { showApiKeyPlain = !showApiKeyPlain }) {
+                                        Icon(
+                                            imageVector = if (showApiKeyPlain) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                            contentDescription = "Toggle key visibility"
+                                        )
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("ai_inline_api_key_input")
+                            )
+
+                            TextButton(
+                                onClick = { showExtraFallbackInputs = !showExtraFallbackInputs },
+                                modifier = Modifier.align(Alignment.End)
+                            ) {
+                                Icon(
+                                    imageVector = if (showExtraFallbackInputs) Icons.Filled.ExpandLess else Icons.Filled.AddCircleOutline,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (showExtraFallbackInputs) "Hide Fallback Keys 2 & 3" else "Add Fallback Keys 2 & 3 (Optional)",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+
+                            AnimatedVisibility(visible = showExtraFallbackInputs) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    LiquidGlassTextField(
+                                        value = setupKey2,
+                                        onValueChange = { setupKey2 = it },
+                                        label = "${setupProvider.shortName} API Key 2 (Fallback 1)",
+                                        placeholder = "Auto-used if Key 1 hits quota",
+                                        singleLine = true,
+                                        visualTransformation = vis,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    LiquidGlassTextField(
+                                        value = setupKey3,
+                                        onValueChange = { setupKey3 = it },
+                                        label = "${setupProvider.shortName} API Key 3 (Fallback 2)",
+                                        placeholder = "Auto-used if Key 2 hits quota",
+                                        singleLine = true,
+                                        visualTransformation = vis,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                }
+                            }
+
+                            if (!modelFetchError.isNullOrBlank()) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = modelFetchError.orEmpty(),
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.error,
+                                    textAlign = TextAlign.Center,
+                                    softWrap = true
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Button(
+                                onClick = {
+                                    val k1 = setupKey1.trim()
+                                    val k2 = setupKey2.trim()
+                                    val k3 = setupKey3.trim()
+                                    if (k1.isBlank() && k2.isBlank() && k3.isBlank()) {
+                                        Toast.makeText(context, "Please paste at least one ${setupProvider.shortName} API key", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        viewModel.saveProviderKeysAndModel(
+                                            provider = setupProvider,
+                                            key1 = k1,
+                                            key2 = k2,
+                                            key3 = k3,
+                                            selectedModel = settings.getSelectedModelForProvider(setupProvider),
+                                            makeActive = true
+                                        ) { ok, msg ->
+                                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                            if (setupProvider == AiProvider.GEMINI && ok) {
+                                                setupWizardInitialStep = 0
+                                                showModelSetupPopup = true
+                                            }
+                                        }
+                                    }
+                                },
+                                enabled = !isFetchingModels && (setupKey1.isNotBlank() || setupKey2.isNotBlank() || setupKey3.isNotBlank()),
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(50.dp)
+                                    .testTag("ai_save_key_open_wizard_button")
+                            ) {
+                                if (isFetchingModels) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text("Connecting...", fontWeight = FontWeight.Bold)
+                                } else {
+                                    Icon(Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Save & Start Hidayah AI", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedButton(
+                                onClick = { openProviderKeyPage(setupProvider) },
+                                shape = RoundedCornerShape(16.dp),
+                                border = BorderStroke(1.2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .testTag("ai_get_gemini_key_button")
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(17.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Get ${setupProvider.shortName} API Key (Auto-Detect Ready)", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Simple, Friendly Mode Tabs: Ask AI | Voice Reader
+                LiquidGlassSegmentedTabs(
+                    tabs = listOf("Ask AI", "Voice Reader"),
+                    selectedIndex = selectedModeTab,
+                    onSelect = { selectedModeTab = it }
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Interactive Seekable Voice Player (Pause / Resume / -5s / +5s / Speed / Seekbar)
+                AnimatedVisibility(visible = voiceState.isActive || !voiceState.statusMessage.isNullOrBlank()) {
+                    AiVoicePlayerBar(
+                        voiceState = voiceState,
+                        onTogglePauseResume = { viewModel.togglePauseResumeAiVoice() },
+                        onRewind = { viewModel.rewindAiVoice(5_000L) },
+                        onForward = { viewModel.forwardAiVoice(5_000L) },
+                        onSeekFraction = { viewModel.seekAiVoice(it) },
+                        onCycleSpeed = { viewModel.cycleAiVoiceSpeed() },
+                        onStop = { viewModel.stopAiAudioPlayback() },
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
+
+                if (selectedModeTab == 0) {
                 // ================= CHAT TAB =================
                 LazyColumn(
                     state = chatListState,
@@ -574,22 +938,122 @@ fun HidayahAiScreen(
                     }
                 }
 
-                // Clean Bottom Composer (automatically sits above floating dock or above keyboard on every phone)
+                // Live Voice Message Recording Panel (Speak -> Auto-Send -> Auto-Spoken AI Reply!)
+                AnimatedVisibility(visible = isVoiceListening) {
+                    LiquidGlassCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp)
+                            .testTag("ai_voice_recording_panel"),
+                        shape = RoundedCornerShape(20.dp),
+                        borderColor = MaterialTheme.colorScheme.error.copy(alpha = 0.55f),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(30.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.error.copy(alpha = 0.18f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Mic,
+                                            contentDescription = "Listening",
+                                            tint = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Listening... Speak your question",
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.error
+                                        )
+                                        Text(
+                                            text = liveVoiceTranscript.ifBlank { "AI will answer automatically in Voice + Text" },
+                                            fontSize = 11.5.sp,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                                TextButton(onClick = { stopVoiceRecording(cancelOnly = true) }) {
+                                    Text("Cancel", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(6.dp))
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(VOICE_INPUT_LANGUAGES) { (tag, label) ->
+                                    val selected = voiceInputLangTag == tag
+                                    FilterChip(
+                                        selected = selected,
+                                        onClick = {
+                                            voiceInputLangTag = tag
+                                            stopVoiceRecording(cancelOnly = true)
+                                            startVoiceMessageRecording()
+                                        },
+                                        label = { Text(label, fontSize = 11.sp) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Clean Bottom Composer with Voice Message Mic + Text Input + Send (sits cleanly above dock or keyboard)
                 LiquidGlassCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 6.dp, bottom = 8.dp),
                     shape = RoundedCornerShape(24.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // Voice Message Mic Button (Speak to AI -> AI answers with Text + Automatic Voice!)
+                        FilledTonalIconButton(
+                            onClick = { requestOrToggleVoiceRecording() },
+                            enabled = !isGeneratingText,
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = if (isVoiceListening) {
+                                    MaterialTheme.colorScheme.error
+                                } else {
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
+                                },
+                                contentColor = if (isVoiceListening) {
+                                    MaterialTheme.colorScheme.onError
+                                } else {
+                                    MaterialTheme.colorScheme.primary
+                                }
+                            ),
+                            modifier = Modifier
+                                .size(48.dp)
+                                .testTag("ai_voice_message_mic_button")
+                        ) {
+                            Icon(
+                                imageVector = if (isVoiceListening) Icons.Filled.Stop else Icons.Filled.Mic,
+                                contentDescription = if (isVoiceListening) "Finish voice message" else "Send voice message",
+                                modifier = Modifier.size(21.dp)
+                            )
+                        }
+
                         OutlinedTextField(
                             value = promptInput,
                             onValueChange = { promptInput = it },
-                            placeholder = { Text("Ask a question...", fontSize = 14.sp) },
+                            placeholder = { Text("Ask or tap mic to speak...", fontSize = 13.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("ai_prompt_input"),
@@ -599,7 +1063,7 @@ fun HidayahAiScreen(
                                 unfocusedBorderColor = Color.Transparent
                             )
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         if (isGeneratingText) {
                             FilledIconButton(
                                 onClick = { viewModel.stopAiTextGeneration() },
@@ -622,7 +1086,7 @@ fun HidayahAiScreen(
                                     val trimmed = promptInput.trim()
                                     if (trimmed.isNotEmpty()) {
                                         promptInput = ""
-                                        viewModel.sendAiChatPrompt(trimmed)
+                                        viewModel.sendAiChatPrompt(trimmed, isVoiceMessage = false)
                                     }
                                 },
                                 enabled = promptInput.isNotBlank(),
@@ -843,83 +1307,35 @@ fun HidayahAiScreen(
         )
     }
 
-    // ================= UPDATE API KEY POP-UP =================
-    if (showApiKeyChangeDialog) {
-        var modalKey by remember { mutableStateOf(settings.geminiApiKey) }
-        var showPlain by remember { mutableStateOf(false) }
-
-        LiquidGlassDialog(
-            onDismissRequest = { showApiKeyChangeDialog = false },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Key, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Gemini API Key")
+    // ================= MULTI-AI & 3-KEY FALLBACK MANAGER DIALOG =================
+    if (showMultiAiDialog) {
+        MultiAiProviderDialog(
+            settings = settings,
+            geminiTextModels = textModels,
+            isFetchingGeminiModels = isFetchingModels,
+            initialProvider = activeProvider,
+            onDismiss = { showMultiAiDialog = false },
+            onSaveProvider = { provider, k1, k2, k3, modelId ->
+                showMultiAiDialog = false
+                viewModel.saveProviderKeysAndModel(
+                    provider = provider,
+                    key1 = k1,
+                    key2 = k2,
+                    key3 = k3,
+                    selectedModel = modelId,
+                    makeActive = true
+                ) { _, msg ->
+                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                 }
             },
-            text = {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = "Update your Gemini API key below. After saving, the 3-step Model & Voice selector will open automatically.",
-                        fontSize = 12.sp,
-                        lineHeight = 18.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    LiquidGlassTextField(
-                        value = modalKey,
-                        onValueChange = { modalKey = it },
-                        label = "Gemini API Key",
-                        placeholder = "AIzaSy...",
-                        singleLine = true,
-                        visualTransformation = if (showPlain) VisualTransformation.None else PasswordVisualTransformation(),
-                        trailingIcon = {
-                            IconButton(onClick = { showPlain = !showPlain }) {
-                                Icon(
-                                    imageVector = if (showPlain) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                    contentDescription = "Toggle visibility"
-                                )
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    OutlinedButton(
-                        onClick = { openGetGeminiKeyPage() },
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(46.dp)
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Get Your Gemini API Key Here", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            onOpenGeminiVoiceWizard = {
+                setupWizardInitialStep = 0
+                if (availableModels.isEmpty() && hasGeminiKey) {
+                    viewModel.refreshGeminiModels { ok ->
+                        if (ok) showModelSetupPopup = true
                     }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showApiKeyChangeDialog = false }) {
-                    Text("Cancel")
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val trimmed = modalKey.trim()
-                        if (trimmed.isNotBlank()) {
-                            showApiKeyChangeDialog = false
-                            viewModel.saveGeminiApiKeyAndFetchModels(trimmed) { success ->
-                                if (success) {
-                                    setupWizardInitialStep = 0
-                                    showModelSetupPopup = true
-                                }
-                            }
-                        }
-                    },
-                    enabled = modalKey.isNotBlank() && !isFetchingModels,
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Text("Save & Select Models", fontWeight = FontWeight.Bold)
+                } else {
+                    showModelSetupPopup = true
                 }
             }
         )

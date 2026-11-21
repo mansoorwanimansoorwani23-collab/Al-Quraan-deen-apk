@@ -406,7 +406,7 @@ fun HidayahMainApp(viewModel: MainViewModel) {
                 currentRoute = currentScreen,
                 cityName = homeState.userSettings.cityName,
                 hijriDateText = homeState.hijriDate?.formatShort(),
-                hasGeminiKey = homeState.userSettings.geminiApiKey.isNotBlank(),
+                hasGeminiKey = homeState.userSettings.hasAnyAiApiKey(),
                 onDismiss = { isLeftDrawerOpen = false },
                 onSelectRoute = { route -> navigateTo(route) },
                 onSelectTheme = { mode -> viewModel.updateAppTheme(mode.id) }

@@ -54,6 +54,8 @@ data class AiChatMessage(
     val text: String,
     val modelUsed: String = "",
     val isStreaming: Boolean = false,
+    val isVoiceMessage: Boolean = false,
+    val providerLabel: String = "",
     val timestampMs: Long = System.currentTimeMillis()
 )
 

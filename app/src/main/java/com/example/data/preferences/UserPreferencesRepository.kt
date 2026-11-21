@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.ai.AiProvider
 import com.example.domain.calculator.CalculationMethod
 import com.example.domain.calculator.HighLatitudeRule
 import com.example.domain.calculator.Madhhab
@@ -64,13 +65,62 @@ data class UserSettings(
     val savedAudioAyahNumber: Int = 1,
     val savedAudioPositionMs: Int = 0,
     val savedAudioReciterId: String = "mishary",
-    // End-user Gemini AI API configuration & selected models
+    // End-user Multi-AI & 3-Key Fallback configuration (Gemini, Grok, OpenAI, Anthropic)
+    val activeAiProvider: String = AiProvider.GEMINI.id,
     val geminiApiKey: String = "",
+    val geminiApiKey2: String = "",
+    val geminiApiKey3: String = "",
     val selectedGeminiTextModel: String = "",
     val selectedGeminiAudioModel: String = "",
     val selectedGeminiVoice: String = "Kore",
-    val cachedGeminiModelsJson: String = ""
-)
+    val cachedGeminiModelsJson: String = "",
+    val grokApiKey1: String = "",
+    val grokApiKey2: String = "",
+    val grokApiKey3: String = "",
+    val selectedGrokModel: String = "grok-3-mini",
+    val openAiApiKey1: String = "",
+    val openAiApiKey2: String = "",
+    val openAiApiKey3: String = "",
+    val selectedOpenAiModel: String = "gpt-4o-mini",
+    val anthropicApiKey1: String = "",
+    val anthropicApiKey2: String = "",
+    val anthropicApiKey3: String = "",
+    val selectedAnthropicModel: String = "claude-3-5-haiku-latest",
+    val autoPlayAiVoiceReply: Boolean = false
+) {
+    fun getKeysForProvider(provider: AiProvider): List<String> = when (provider) {
+        AiProvider.GEMINI -> listOf(geminiApiKey, geminiApiKey2, geminiApiKey3)
+        AiProvider.GROK -> listOf(grokApiKey1, grokApiKey2, grokApiKey3)
+        AiProvider.OPENAI -> listOf(openAiApiKey1, openAiApiKey2, openAiApiKey3)
+        AiProvider.ANTHROPIC -> listOf(anthropicApiKey1, anthropicApiKey2, anthropicApiKey3)
+    }
+
+    fun getConfiguredKeysForProvider(provider: AiProvider): List<Pair<Int, String>> =
+        getKeysForProvider(provider)
+            .mapIndexedNotNull { idx, key ->
+                val trimmed = key.trim()
+                if (trimmed.isNotBlank()) (idx + 1) to trimmed else null
+            }
+
+    fun getSelectedModelForProvider(provider: AiProvider): String = when (provider) {
+        AiProvider.GEMINI -> selectedGeminiTextModel.ifBlank { provider.defaultModels.first() }
+        AiProvider.GROK -> selectedGrokModel.ifBlank { provider.defaultModels.first() }
+        AiProvider.OPENAI -> selectedOpenAiModel.ifBlank { provider.defaultModels.first() }
+        AiProvider.ANTHROPIC -> selectedAnthropicModel.ifBlank { provider.defaultModels.first() }
+    }
+
+    fun hasAnyAiApiKey(): Boolean = AiProvider.entries.any { getConfiguredKeysForProvider(it).isNotEmpty() }
+
+    fun totalConfiguredAiKeys(): Int = AiProvider.entries.sumOf { getConfiguredKeysForProvider(it).size }
+
+    fun containsApiKey(candidate: String): Boolean {
+        val trimmed = candidate.trim()
+        if (trimmed.isBlank()) return false
+        return AiProvider.entries.any { provider ->
+            getKeysForProvider(provider).any { it.trim() == trimmed }
+        }
+    }
+}
 
 class UserPreferencesRepository(private val context: Context) {
 
@@ -125,11 +175,27 @@ class UserPreferencesRepository(private val context: Context) {
         val SAVED_AUDIO_AYAH_NUM = intPreferencesKey("saved_audio_ayah_num")
         val SAVED_AUDIO_POS_MS = intPreferencesKey("saved_audio_pos_ms")
         val SAVED_AUDIO_RECITER_ID = stringPreferencesKey("saved_audio_reciter_id")
+        val ACTIVE_AI_PROVIDER = stringPreferencesKey("active_ai_provider")
         val GEMINI_API_KEY = stringPreferencesKey("gemini_api_key")
+        val GEMINI_API_KEY_2 = stringPreferencesKey("gemini_api_key_2")
+        val GEMINI_API_KEY_3 = stringPreferencesKey("gemini_api_key_3")
         val GEMINI_TEXT_MODEL = stringPreferencesKey("gemini_text_model")
         val GEMINI_AUDIO_MODEL = stringPreferencesKey("gemini_audio_model")
         val GEMINI_VOICE = stringPreferencesKey("gemini_voice")
         val CACHED_GEMINI_MODELS_JSON = stringPreferencesKey("cached_gemini_models_json")
+        val GROK_API_KEY_1 = stringPreferencesKey("grok_api_key_1")
+        val GROK_API_KEY_2 = stringPreferencesKey("grok_api_key_2")
+        val GROK_API_KEY_3 = stringPreferencesKey("grok_api_key_3")
+        val GROK_MODEL = stringPreferencesKey("grok_model")
+        val OPENAI_API_KEY_1 = stringPreferencesKey("openai_api_key_1")
+        val OPENAI_API_KEY_2 = stringPreferencesKey("openai_api_key_2")
+        val OPENAI_API_KEY_3 = stringPreferencesKey("openai_api_key_3")
+        val OPENAI_MODEL = stringPreferencesKey("openai_model")
+        val ANTHROPIC_API_KEY_1 = stringPreferencesKey("anthropic_api_key_1")
+        val ANTHROPIC_API_KEY_2 = stringPreferencesKey("anthropic_api_key_2")
+        val ANTHROPIC_API_KEY_3 = stringPreferencesKey("anthropic_api_key_3")
+        val ANTHROPIC_MODEL = stringPreferencesKey("anthropic_model")
+        val AUTO_PLAY_AI_VOICE_REPLY = booleanPreferencesKey("auto_play_ai_voice_reply")
     }
 
     val userSettingsFlow: Flow<UserSettings> = context.dataStore.data.map { prefs ->
@@ -190,11 +256,27 @@ class UserPreferencesRepository(private val context: Context) {
             savedAudioAyahNumber = prefs[PreferencesKeys.SAVED_AUDIO_AYAH_NUM] ?: 1,
             savedAudioPositionMs = prefs[PreferencesKeys.SAVED_AUDIO_POS_MS] ?: 0,
             savedAudioReciterId = prefs[PreferencesKeys.SAVED_AUDIO_RECITER_ID] ?: "mishary",
+            activeAiProvider = prefs[PreferencesKeys.ACTIVE_AI_PROVIDER] ?: AiProvider.GEMINI.id,
             geminiApiKey = prefs[PreferencesKeys.GEMINI_API_KEY] ?: "",
+            geminiApiKey2 = prefs[PreferencesKeys.GEMINI_API_KEY_2] ?: "",
+            geminiApiKey3 = prefs[PreferencesKeys.GEMINI_API_KEY_3] ?: "",
             selectedGeminiTextModel = prefs[PreferencesKeys.GEMINI_TEXT_MODEL] ?: "",
             selectedGeminiAudioModel = prefs[PreferencesKeys.GEMINI_AUDIO_MODEL] ?: "",
             selectedGeminiVoice = prefs[PreferencesKeys.GEMINI_VOICE] ?: "Kore",
-            cachedGeminiModelsJson = prefs[PreferencesKeys.CACHED_GEMINI_MODELS_JSON] ?: ""
+            cachedGeminiModelsJson = prefs[PreferencesKeys.CACHED_GEMINI_MODELS_JSON] ?: "",
+            grokApiKey1 = prefs[PreferencesKeys.GROK_API_KEY_1] ?: "",
+            grokApiKey2 = prefs[PreferencesKeys.GROK_API_KEY_2] ?: "",
+            grokApiKey3 = prefs[PreferencesKeys.GROK_API_KEY_3] ?: "",
+            selectedGrokModel = prefs[PreferencesKeys.GROK_MODEL] ?: "grok-3-mini",
+            openAiApiKey1 = prefs[PreferencesKeys.OPENAI_API_KEY_1] ?: "",
+            openAiApiKey2 = prefs[PreferencesKeys.OPENAI_API_KEY_2] ?: "",
+            openAiApiKey3 = prefs[PreferencesKeys.OPENAI_API_KEY_3] ?: "",
+            selectedOpenAiModel = prefs[PreferencesKeys.OPENAI_MODEL] ?: "gpt-4o-mini",
+            anthropicApiKey1 = prefs[PreferencesKeys.ANTHROPIC_API_KEY_1] ?: "",
+            anthropicApiKey2 = prefs[PreferencesKeys.ANTHROPIC_API_KEY_2] ?: "",
+            anthropicApiKey3 = prefs[PreferencesKeys.ANTHROPIC_API_KEY_3] ?: "",
+            selectedAnthropicModel = prefs[PreferencesKeys.ANTHROPIC_MODEL] ?: "claude-3-5-haiku-latest",
+            autoPlayAiVoiceReply = prefs[PreferencesKeys.AUTO_PLAY_AI_VOICE_REPLY] ?: false
         )
     }
 
@@ -367,7 +449,81 @@ class UserPreferencesRepository(private val context: Context) {
         }
     }
 
-    // Gemini AI User-Entered Key & Model Selection Persistence
+    // Multi-AI & 3-Key Fallback Persistence
+    suspend fun updateActiveAiProvider(provider: AiProvider) {
+        context.dataStore.edit { it[PreferencesKeys.ACTIVE_AI_PROVIDER] = provider.id }
+    }
+
+    suspend fun updateProviderKeysAndModel(
+        provider: AiProvider,
+        key1: String,
+        key2: String,
+        key3: String,
+        modelId: String? = null
+    ) {
+        context.dataStore.edit { prefs ->
+            when (provider) {
+                AiProvider.GEMINI -> {
+                    prefs[PreferencesKeys.GEMINI_API_KEY] = key1.trim()
+                    prefs[PreferencesKeys.GEMINI_API_KEY_2] = key2.trim()
+                    prefs[PreferencesKeys.GEMINI_API_KEY_3] = key3.trim()
+                    if (!modelId.isNullOrBlank()) prefs[PreferencesKeys.GEMINI_TEXT_MODEL] = modelId
+                }
+                AiProvider.GROK -> {
+                    prefs[PreferencesKeys.GROK_API_KEY_1] = key1.trim()
+                    prefs[PreferencesKeys.GROK_API_KEY_2] = key2.trim()
+                    prefs[PreferencesKeys.GROK_API_KEY_3] = key3.trim()
+                    if (!modelId.isNullOrBlank()) prefs[PreferencesKeys.GROK_MODEL] = modelId
+                }
+                AiProvider.OPENAI -> {
+                    prefs[PreferencesKeys.OPENAI_API_KEY_1] = key1.trim()
+                    prefs[PreferencesKeys.OPENAI_API_KEY_2] = key2.trim()
+                    prefs[PreferencesKeys.OPENAI_API_KEY_3] = key3.trim()
+                    if (!modelId.isNullOrBlank()) prefs[PreferencesKeys.OPENAI_MODEL] = modelId
+                }
+                AiProvider.ANTHROPIC -> {
+                    prefs[PreferencesKeys.ANTHROPIC_API_KEY_1] = key1.trim()
+                    prefs[PreferencesKeys.ANTHROPIC_API_KEY_2] = key2.trim()
+                    prefs[PreferencesKeys.ANTHROPIC_API_KEY_3] = key3.trim()
+                    if (!modelId.isNullOrBlank()) prefs[PreferencesKeys.ANTHROPIC_MODEL] = modelId
+                }
+            }
+        }
+    }
+
+    suspend fun updateProviderKeySlot(provider: AiProvider, slotIndex: Int, apiKey: String) {
+        val trimmed = apiKey.trim()
+        context.dataStore.edit { prefs ->
+            val prefKey = when (provider) {
+                AiProvider.GEMINI -> when (slotIndex) {
+                    1 -> PreferencesKeys.GEMINI_API_KEY
+                    2 -> PreferencesKeys.GEMINI_API_KEY_2
+                    else -> PreferencesKeys.GEMINI_API_KEY_3
+                }
+                AiProvider.GROK -> when (slotIndex) {
+                    1 -> PreferencesKeys.GROK_API_KEY_1
+                    2 -> PreferencesKeys.GROK_API_KEY_2
+                    else -> PreferencesKeys.GROK_API_KEY_3
+                }
+                AiProvider.OPENAI -> when (slotIndex) {
+                    1 -> PreferencesKeys.OPENAI_API_KEY_1
+                    2 -> PreferencesKeys.OPENAI_API_KEY_2
+                    else -> PreferencesKeys.OPENAI_API_KEY_3
+                }
+                AiProvider.ANTHROPIC -> when (slotIndex) {
+                    1 -> PreferencesKeys.ANTHROPIC_API_KEY_1
+                    2 -> PreferencesKeys.ANTHROPIC_API_KEY_2
+                    else -> PreferencesKeys.ANTHROPIC_API_KEY_3
+                }
+            }
+            prefs[prefKey] = trimmed
+        }
+    }
+
+    suspend fun updateAutoPlayAiVoiceReply(enabled: Boolean) {
+        context.dataStore.edit { it[PreferencesKeys.AUTO_PLAY_AI_VOICE_REPLY] = enabled }
+    }
+
     suspend fun updateGeminiApiKey(apiKey: String) {
         context.dataStore.edit { it[PreferencesKeys.GEMINI_API_KEY] = apiKey.trim() }
     }
@@ -391,6 +547,8 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun clearGeminiConfig() {
         context.dataStore.edit {
             it[PreferencesKeys.GEMINI_API_KEY] = ""
+            it[PreferencesKeys.GEMINI_API_KEY_2] = ""
+            it[PreferencesKeys.GEMINI_API_KEY_3] = ""
             it[PreferencesKeys.GEMINI_TEXT_MODEL] = ""
             it[PreferencesKeys.GEMINI_AUDIO_MODEL] = ""
             it[PreferencesKeys.CACHED_GEMINI_MODELS_JSON] = ""

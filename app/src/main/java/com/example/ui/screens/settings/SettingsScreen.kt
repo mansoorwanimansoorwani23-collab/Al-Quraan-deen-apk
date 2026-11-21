@@ -39,6 +39,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.example.ai.AiProvider
 import com.example.ai.GeminiAiService
 import com.example.ai.GeminiModelCategory
 import com.example.audio.AdhanAudioPlayer
@@ -51,6 +52,7 @@ import com.example.ui.components.LiquidGlassDialog
 import com.example.ui.components.LocalBottomDockPadding
 import com.example.ui.components.LiquidGlassTextField
 import com.example.ui.components.SectionHeader
+import com.example.ui.screens.ai.MultiAiProviderDialog
 import com.example.ui.theme.*
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -83,6 +85,7 @@ fun SettingsScreen(
     var showSourcesDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
     var showProfileDialog by remember { mutableStateOf(false) }
+    var showMultiAiDialog by remember { mutableStateOf(false) }
     var isDetectingGps by remember { mutableStateOf(false) }
 
     // Profile form state
@@ -234,11 +237,48 @@ fun SettingsScreen(
             }
         }
 
-        // 2. Gemini AI API Key & Auto-Discovered Model Selection (Text Generation & Audio Read)
+        // 2. Hidayah AI Multi-Provider & 3-Key Fallback Manager
+        item {
+            SectionHeader(
+                title = "Hidayah AI — Multi-Provider & 3-Key Fallback",
+                subtitle = "Add up to 3 API keys each for Gemini, Grok, OpenAI & Anthropic with automatic quota failover"
+            )
+            LiquidGlassCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("settings_multi_ai_card"),
+                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp)
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    SettingRow(
+                        title = "Manage AI Providers & 3-Key Slots",
+                        subtitle = "Active: ${AiProvider.fromId(settings.activeAiProvider).displayName} • ${settings.totalConfiguredAiKeys()}/12 keys saved",
+                        icon = Icons.Filled.AutoAwesome,
+                        onClick = { showMultiAiDialog = true },
+                        testTag = "settings_open_multi_ai_button"
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 8.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    SettingToggleRow(
+                        title = "Auto-Speak Hidayah AI Replies",
+                        subtitle = "Automatically read AI answers aloud (voice messages always reply with voice)",
+                        icon = Icons.Filled.RecordVoiceOver,
+                        isChecked = settings.autoPlayAiVoiceReply,
+                        onCheckedChange = { enabled ->
+                            viewModel.toggleAutoPlayAiVoiceReply(enabled)
+                        }
+                    )
+                }
+            }
+        }
+
+        // 2b. Gemini AI API Key & Auto-Discovered Model Selection (Text Generation & Audio Read)
         item {
             SectionHeader(
                 title = "Gemini AI & Model Selection",
-                subtitle = "Enter your Gemini API key to auto-load all available models"
+                subtitle = "Primary Gemini key (Slot 1) & auto-discovered Text / Audio models"
             )
             LiquidGlassCard(
                 modifier = Modifier
@@ -1530,6 +1570,25 @@ fun SettingsScreen(
                     Text("Close")
                 }
             }
+        )
+    }
+
+    if (showMultiAiDialog) {
+        MultiAiProviderDialog(
+            settings = settings,
+            geminiTextModels = textGenerationModels,
+            isFetchingGeminiModels = isFetchingModels,
+            onDismiss = { showMultiAiDialog = false },
+            onSaveProvider = { provider, key1, key2, key3, model ->
+                viewModel.saveProviderKeysAndModel(
+                    provider = provider,
+                    key1 = key1,
+                    key2 = key2,
+                    key3 = key3,
+                    selectedModel = model
+                )
+            },
+            onOpenGeminiVoiceWizard = { showMultiAiDialog = false }
         )
     }
 }

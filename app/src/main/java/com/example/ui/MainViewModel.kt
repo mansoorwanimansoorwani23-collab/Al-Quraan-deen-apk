@@ -13,13 +13,15 @@ import android.speech.tts.UtteranceProgressListener
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.ai.AiChatMessage
+import com.example.ai.AiProvider
 import com.example.ai.AiVoicePlaybackState
 import com.example.ai.AiVoicePlayer
 import com.example.ai.GeminiAiService
 import com.example.ai.GeminiModelCategory
 import com.example.ai.GeminiModelInfo
 import com.example.ai.GeminiModelsFetchResult
-import com.example.ai.GeminiTextResult
+import com.example.ai.MultiAiProviderService
+import com.example.ai.MultiAiTextResult
 import com.example.audio.QuranAudioPlayerManager
 import com.example.audio.QuranPlaybackState
 import com.example.audio.ReciterVoice
@@ -725,16 +727,102 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 preferencesRepository.updateCachedGeminiModelsJson("")
                 onCompleted?.invoke(false)
             } else {
+                preferencesRepository.updateActiveAiProvider(AiProvider.GEMINI)
+                MultiAiProviderService.clearKeyCooldown(trimmed)
                 val ok = fetchGeminiModelsInternal(trimmed)
                 onCompleted?.invoke(ok)
             }
         }
     }
 
+    fun selectAiProvider(provider: AiProvider) {
+        viewModelScope.launch {
+            preferencesRepository.updateActiveAiProvider(provider)
+        }
+    }
+
+    fun toggleAutoPlayAiVoiceReply(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.updateAutoPlayAiVoiceReply(enabled)
+        }
+    }
+
+    fun saveProviderKeysAndModel(
+        provider: AiProvider,
+        key1: String,
+        key2: String,
+        key3: String,
+        selectedModel: String,
+        makeActive: Boolean = true,
+        onCompleted: ((Boolean, String) -> Unit)? = null
+    ) {
+        viewModelScope.launch {
+            preferencesRepository.updateProviderKeysAndModel(
+                provider = provider,
+                key1 = key1,
+                key2 = key2,
+                key3 = key3,
+                modelId = selectedModel
+            )
+            listOf(key1, key2, key3).forEach { MultiAiProviderService.clearKeyCooldown(it) }
+            val configuredCount = listOf(key1, key2, key3).count { it.trim().isNotBlank() }
+            if (makeActive && configuredCount > 0) {
+                preferencesRepository.updateActiveAiProvider(provider)
+            }
+
+            if (provider == AiProvider.GEMINI) {
+                val firstGeminiKey = listOf(key1, key2, key3).firstOrNull { it.trim().isNotBlank() }?.trim().orEmpty()
+                if (firstGeminiKey.isNotBlank()) {
+                    val ok = fetchGeminiModelsInternal(firstGeminiKey)
+                    onCompleted?.invoke(ok, if (ok) "Saved $configuredCount Gemini key(s) & loaded models" else "Saved $configuredCount Gemini key(s)")
+                    return@launch
+                }
+            }
+            onCompleted?.invoke(
+                true,
+                if (configuredCount > 0) "Saved $configuredCount ${provider.shortName} key(s) • $selectedModel"
+                else "Cleared ${provider.shortName} keys"
+            )
+        }
+    }
+
+    /**
+     * Option 3: 1-Tap Auto-Save for an API key detected from the Android clipboard.
+     * Places the key into the first empty slot (1, 2, or 3) for the detected provider.
+     */
+    fun saveDetectedClipboardApiKey(
+        provider: AiProvider,
+        apiKey: String,
+        onCompleted: (slotNumber: Int, loadedGeminiModels: Boolean) -> Unit
+    ) {
+        val trimmed = apiKey.trim()
+        if (trimmed.isBlank()) return
+        viewModelScope.launch {
+            val current = userSettings.value
+            val slots = current.getKeysForProvider(provider)
+            val targetSlot = when {
+                slots[0].isBlank() -> 1
+                slots[1].isBlank() -> 2
+                slots[2].isBlank() -> 3
+                else -> 3
+            }
+            preferencesRepository.updateProviderKeySlot(provider, targetSlot, trimmed)
+            MultiAiProviderService.clearKeyCooldown(trimmed)
+            if (!current.hasAnyAiApiKey() || current.getConfiguredKeysForProvider(AiProvider.fromId(current.activeAiProvider)).isEmpty()) {
+                preferencesRepository.updateActiveAiProvider(provider)
+            }
+            var loadedModels = false
+            if (provider == AiProvider.GEMINI && _availableGeminiModels.value.isEmpty()) {
+                loadedModels = fetchGeminiModelsInternal(trimmed)
+            }
+            onCompleted(targetSlot, loadedModels)
+        }
+    }
+
     fun refreshGeminiModels(onCompleted: ((Boolean) -> Unit)? = null) {
-        val key = userSettings.value.geminiApiKey
+        val key = MultiAiProviderService.resolveBestGeminiKey(userSettings.value)
         if (key.isBlank()) {
-            _geminiModelFetchError.value = "Enter your Gemini API key first."
+            _geminiModelFetchError.value = "Enter at least one Gemini API key first."
             onCompleted?.invoke(false)
             return
         }
@@ -822,12 +910,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Pre-warms HTTP/2 TLS socket to Gemini API and pre-initializes on-device TTS engine
+     * Pre-warms HTTP/2 TLS sockets to configured AI providers and pre-initializes on-device TTS
      * so first text token and first spoken word arrive noticeably faster.
      */
     fun warmUpAiNetwork() {
+        val settings = userSettings.value
         viewModelScope.launch(Dispatchers.IO) {
-            GeminiAiService.warmUpConnection()
+            MultiAiProviderService.warmUpConfiguredProviders(settings)
         }
         aiVoicePlayer.prewarmEngine()
     }
@@ -845,33 +934,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return primary to dedicatedFallback
     }
 
-    fun sendAiChatPrompt(prompt: String) {
+    fun sendAiChatPrompt(
+        prompt: String,
+        isVoiceMessage: Boolean = false
+    ) {
         val cleanPrompt = prompt.trim()
         if (cleanPrompt.isBlank()) return
 
         stopAiTextGeneration()
 
         val settings = userSettings.value
-        val apiKey = settings.geminiApiKey
-        val textModel = settings.selectedGeminiTextModel.ifBlank {
-            _availableGeminiModels.value.firstOrNull { it.category == GeminiModelCategory.TEXT_GENERATION }?.id.orEmpty()
-        }
+        val activeProvider = AiProvider.fromId(settings.activeAiProvider)
+        val geminiFallbackModel = _availableGeminiModels.value
+            .firstOrNull { it.category == GeminiModelCategory.TEXT_GENERATION }?.id.orEmpty()
+        val initialModel = settings.getSelectedModelForProvider(activeProvider)
+        val bestGeminiTtsKey = MultiAiProviderService.resolveBestGeminiKey(settings)
         val (audioModel, dedicatedTtsFallback) = resolveAudioModels()
         val voice = settings.selectedGeminiVoice
+        val shouldAutoSpeakReply = isVoiceMessage || settings.autoPlayAiVoiceReply
 
         val now = System.currentTimeMillis()
         val userMsg = AiChatMessage(
             id = "u_$now",
             isUser = true,
-            text = cleanPrompt
+            text = cleanPrompt,
+            isVoiceMessage = isVoiceMessage
         )
         val assistantMsgId = "a_${now + 1}"
         val streamingPlaceholder = AiChatMessage(
             id = assistantMsgId,
             isUser = false,
             text = "",
-            modelUsed = textModel,
-            isStreaming = true
+            modelUsed = initialModel,
+            isStreaming = true,
+            providerLabel = "${activeProvider.shortName} • Key 1"
         )
 
         val historyBefore = _aiChatMessages.value
@@ -881,17 +977,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         aiTextJob = viewModelScope.launch {
             var earlyVoicePreloadTriggered = false
             try {
-                val res = GeminiAiService.generateTextStreaming(
-                    apiKey = apiKey,
-                    modelId = textModel,
+                val res = MultiAiProviderService.generateTextStreamingWithFallback(
+                    settings = settings,
+                    geminiFallbackModelId = geminiFallbackModel,
                     userPrompt = cleanPrompt,
                     recentHistory = historyBefore,
+                    onActiveAttemptChanged = { provider, keySlot, modelId ->
+                        updateChatMessage(assistantMsgId) { msg ->
+                            msg.copy(
+                                modelUsed = modelId,
+                                providerLabel = "${provider.shortName} • Key $keySlot"
+                            )
+                        }
+                    },
                     onPartialText = { partial ->
                         updateChatMessage(assistantMsgId) { msg ->
                             msg.copy(text = partial, isStreaming = true)
                         }
-                        // As soon as the first natural sentence streams in, start preloading voice in parallel!
+                        // Start preloading Gemini voice in parallel as soon as first sentence arrives
                         if (!earlyVoicePreloadTriggered &&
+                            bestGeminiTtsKey.isNotBlank() &&
                             partial.length >= 130 &&
                             partial.any { it == '.' || it == '!' || it == '?' || it == '।' || it == '\n' }
                         ) {
@@ -899,7 +1004,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             aiVoicePlayer.preloadMessageVoice(
                                 messageId = assistantMsgId,
                                 rawText = partial,
-                                apiKey = apiKey,
+                                apiKey = bestGeminiTtsKey,
                                 audioModelId = audioModel,
                                 fallbackTtsModelId = dedicatedTtsFallback,
                                 voiceName = voice,
@@ -909,30 +1014,48 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 )
                 when (res) {
-                    is GeminiTextResult.Success -> {
+                    is MultiAiTextResult.Success -> {
+                        val badge = buildString {
+                            append(res.provider.shortName)
+                            append(" • Key ")
+                            append(res.keySlot)
+                            if (res.usedFallback) append(" (Fallback)")
+                        }
                         updateChatMessage(assistantMsgId) { msg ->
                             msg.copy(
                                 text = res.text,
                                 modelUsed = res.modelId,
+                                providerLabel = badge,
                                 isStreaming = false
                             )
                         }
-                        // Immediately preload full voice audio in background so pressing Listen is instant!
-                        aiVoicePlayer.preloadMessageVoice(
-                            messageId = assistantMsgId,
-                            rawText = res.text,
-                            apiKey = apiKey,
-                            audioModelId = audioModel,
-                            fallbackTtsModelId = dedicatedTtsFallback,
-                            voiceName = voice,
-                            isFinalText = true
-                        )
+                        if (shouldAutoSpeakReply) {
+                            // Voice message reply (or Auto-Voice enabled): speak answer aloud automatically!
+                            aiVoicePlayer.playOrToggleMessage(
+                                textToRead = res.text,
+                                messageId = assistantMsgId,
+                                apiKey = bestGeminiTtsKey,
+                                audioModelId = audioModel,
+                                fallbackTtsModelId = dedicatedTtsFallback,
+                                voiceName = voice
+                            )
+                        } else if (bestGeminiTtsKey.isNotBlank()) {
+                            // Preload voice silently in background so tapping Listen is instant!
+                            aiVoicePlayer.preloadMessageVoice(
+                                messageId = assistantMsgId,
+                                rawText = res.text,
+                                apiKey = bestGeminiTtsKey,
+                                audioModelId = audioModel,
+                                fallbackTtsModelId = dedicatedTtsFallback,
+                                voiceName = voice,
+                                isFinalText = true
+                            )
+                        }
                     }
-                    is GeminiTextResult.Error -> {
+                    is MultiAiTextResult.Error -> {
                         updateChatMessage(assistantMsgId) { msg ->
                             msg.copy(
                                 text = if (msg.text.isNotBlank()) msg.text else "Error: ${res.message}",
-                                modelUsed = textModel,
                                 isStreaming = false
                             )
                         }
@@ -961,7 +1084,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun stopAiTextGeneration() {
-        GeminiAiService.cancelActiveTextGeneration()
+        MultiAiProviderService.cancelActiveGeneration()
         aiTextJob?.cancel()
         aiTextJob = null
         _isAiGeneratingText.value = false
@@ -982,11 +1105,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (cleanText.isBlank()) return
 
         val settings = userSettings.value
+        val bestGeminiKey = MultiAiProviderService.resolveBestGeminiKey(settings)
         val (audioModel, dedicatedTtsFallback) = resolveAudioModels()
         aiVoicePlayer.playOrToggleMessage(
             textToRead = cleanText,
             messageId = messageId,
-            apiKey = settings.geminiApiKey,
+            apiKey = bestGeminiKey,
             audioModelId = audioModel,
             fallbackTtsModelId = dedicatedTtsFallback,
             voiceName = settings.selectedGeminiVoice

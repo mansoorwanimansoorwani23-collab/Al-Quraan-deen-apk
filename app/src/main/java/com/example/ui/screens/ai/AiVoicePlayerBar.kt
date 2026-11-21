@@ -387,6 +387,26 @@ fun AiChatBubble(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
+                if (message.isUser && message.isVoiceMessage) {
+                    Row(
+                        modifier = Modifier.padding(bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Mic,
+                            contentDescription = "Voice message",
+                            tint = GoldAccentDark,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Voice Message",
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = GoldAccentDark
+                        )
+                    }
+                }
                 if (!message.isUser) {
                     Row(
                         modifier = Modifier
@@ -395,12 +415,21 @@ fun AiChatBubble(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f).padding(end = 6.dp)
+                        ) {
                             Text(
-                                text = "Hidayah AI",
+                                text = if (message.providerLabel.isNotBlank()) {
+                                    "Hidayah AI • ${message.providerLabel}"
+                                } else {
+                                    "Hidayah AI"
+                                },
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             if (message.isStreaming) {
                                 Spacer(modifier = Modifier.width(6.dp))

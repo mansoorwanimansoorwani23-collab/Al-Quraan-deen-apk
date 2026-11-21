@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -636,17 +637,29 @@ fun LiquidGlassLeftDrawerOverlay(
                                 )
                             }
                             Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "ہدایہ کے تمام فیچرز — ہر آپشن کے نیچے اردو میں اس کا مطلب اور استعمال کا طریقہ دیا گیا ہے",
+                                fontFamily = AmiriArabicFontFamily,
+                                fontSize = 12.sp,
+                                lineHeight = 19.sp,
+                                textAlign = TextAlign.End,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
                             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.16f))
                         }
 
                         // Explore & Islamic Tools
                         item {
-                            DrawerSectionLabel("Explore & Knowledge")
+                            DrawerSectionLabel("Explore & Knowledge • علم اور تلاش")
                         }
                         item {
                             LiquidDrawerMenuItem(
                                 title = "Islamic Search",
                                 subtitle = "Quran, Hadith, Duas & Fiqh",
+                                urduTitle = "اسلامی تلاش",
+                                urduGuide = "قرآن، حدیث، دعائیں اور فقہ کے مسائل فوراً تلاش کریں — کوئی بھی لفظ لکھیں اور مستند حوالہ پڑھیں۔",
                                 icon = Icons.Filled.Search,
                                 isActive = currentRoute == Screen.Search.route,
                                 testTag = "drawer_item_search",
@@ -660,6 +673,8 @@ fun LiquidGlassLeftDrawerOverlay(
                             LiquidDrawerMenuItem(
                                 title = "Discover Tools",
                                 subtitle = "Qibla, Tasbeeh, Hadith, Duas, Ramadan",
+                                urduTitle = "اسلامی ٹولز اور سہولیات",
+                                urduGuide = "قبلہ رخ، تسبیح کاؤنٹر، احادیث، روزمرہ دعائیں اور رمضان اوقات — اوپر دیے گئے ٹیب پر کلک کر کے استعمال کریں۔",
                                 icon = Icons.Filled.Explore,
                                 isActive = currentRoute == Screen.Discover.route,
                                 testTag = "drawer_item_discover",
@@ -673,6 +688,8 @@ fun LiquidGlassLeftDrawerOverlay(
                             LiquidDrawerMenuItem(
                                 title = "Deen Tracker",
                                 subtitle = "Daily Salah, Quran & Azkar log",
+                                urduTitle = "دین ٹریکر (روزمرہ عبادت)",
+                                urduGuide = "اپنی روزانہ کی ۵ نمازیں، تلاوت اور اذکار نوٹ کریں — ہر عبادت مکمل ہونے پر ٹِک کریں اور اپنا یومیہ اسکور دیکھیں۔",
                                 icon = Icons.Filled.TaskAlt,
                                 isActive = currentRoute == Screen.Tracker.route,
                                 testTag = "drawer_item_tracker",
@@ -686,12 +703,14 @@ fun LiquidGlassLeftDrawerOverlay(
                         // Worship & Learning
                         item {
                             Spacer(modifier = Modifier.height(4.dp))
-                            DrawerSectionLabel("Worship & Audio Tools")
+                            DrawerSectionLabel("Worship & Audio Tools • عبادت اور تلاوت")
                         }
                         item {
                             LiquidDrawerMenuItem(
                                 title = "Learn Salah",
                                 subtitle = "Step-by-step Wudu, postures & Rakahs",
+                                urduTitle = "نماز سیکھیں (مکمل طریقہ)",
+                                urduGuide = "وضو، نماز کے ارکان، رکعتیں اور دعائیں قدم بہ قدم سیکھیں — کسی بھی نماز یا مرحلے پر کلک کر کے تفصیل پڑھیں۔",
                                 icon = Icons.Filled.School,
                                 isActive = currentRoute == Screen.LearnSalah.route,
                                 testTag = "drawer_item_learn_salah",
@@ -705,6 +724,8 @@ fun LiquidGlassLeftDrawerOverlay(
                             LiquidDrawerMenuItem(
                                 title = "Recitation Practice",
                                 subtitle = "Recite aloud & check pronunciation",
+                                urduTitle = "تلاوت کی مشق (آواز چیک)",
+                                urduGuide = "کوئی آیت منتخب کر کے مائیک بٹن دبائیں اور تلاوت کریں — ایپ آپ کی آواز سن کر تلفظ کی درستگی بتائے گی۔",
                                 icon = Icons.Filled.Mic,
                                 isActive = currentRoute == Screen.RecitationPractice.route,
                                 testTag = "drawer_item_recitation",
@@ -718,6 +739,8 @@ fun LiquidGlassLeftDrawerOverlay(
                             LiquidDrawerMenuItem(
                                 title = "Online Quran Audio",
                                 subtitle = "Stream reciters & resume position",
+                                urduTitle = "آن لائن قرآن آڈیو سنیں",
+                                urduGuide = "مشہور قاریوں کی آواز میں قرآن سنیں — سورت یا پارہ منتخب کریں، جہاں روکیں گے وہیں سے دوبارہ شروع ہوگا۔",
                                 icon = Icons.Filled.Headphones,
                                 isActive = currentRoute == Screen.OnlineQuranAudio.route,
                                 testTag = "drawer_item_online_audio",
@@ -733,7 +756,18 @@ fun LiquidGlassLeftDrawerOverlay(
                             Spacer(modifier = Modifier.height(6.dp))
                             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.16f))
                             Spacer(modifier = Modifier.height(6.dp))
-                            DrawerSectionLabel("Liquid Glass & Islamic Themes")
+                            DrawerSectionLabel("Liquid Glass & Islamic Themes • تھیم بدلیں")
+                            Text(
+                                text = "اپنی پسند کا رنگ اور گلاس ڈیزائن چنیں — کسی بھی تھیم پر کلک کریں تو ایپ کا انداز فوراً بدل جائے گا۔",
+                                fontFamily = AmiriArabicFontFamily,
+                                fontSize = 11.5.sp,
+                                lineHeight = 18.sp,
+                                textAlign = TextAlign.End,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
                             Spacer(modifier = Modifier.height(6.dp))
                             LazyRow(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -783,14 +817,16 @@ fun LiquidGlassLeftDrawerOverlay(
                             }
                         }
 
-                        // Settings & Gemini API Key
+                        // Settings & Multi-AI API Keys
                         item {
                             Spacer(modifier = Modifier.height(6.dp))
                             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.16f))
                             Spacer(modifier = Modifier.height(6.dp))
                             LiquidDrawerMenuItem(
-                                title = "Settings & Gemini API Key",
-                                subtitle = if (hasGeminiKey) "Gemini AI connected • Adhan, Fonts & About" else "Add Gemini API key, Adhan, Fonts & About",
+                                title = "Settings & Multi-AI Keys",
+                                subtitle = if (hasGeminiKey) "AI connected • Adhan, Fonts & About" else "Add Gemini / Grok / OpenAI / Claude keys",
+                                urduTitle = "سیٹنگز اور ملٹی اے آئی کیز",
+                                urduGuide = "اذان کی آواز، نماز کے اوقات، قرآن کا فونٹ، لوکیشن اور ملٹی اے آئی کیز یہاں سے سیٹ اور محفوظ کریں۔",
                                 icon = Icons.Filled.Settings,
                                 isActive = currentRoute == Screen.Settings.route,
                                 badgeText = if (hasGeminiKey) "AI Ready" else "Setup AI",
@@ -824,6 +860,8 @@ private fun DrawerSectionLabel(text: String) {
 private fun LiquidDrawerMenuItem(
     title: String,
     subtitle: String,
+    urduTitle: String,
+    urduGuide: String,
     icon: ImageVector,
     isActive: Boolean,
     badgeText: String? = null,
@@ -865,68 +903,97 @@ private fun LiquidDrawerMenuItem(
             }
         )
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 11.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
-                        else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
-                    ),
-                contentAlignment = Alignment.Center
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(19.dp)
-                )
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = subtitle,
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            if (badgeText != null) {
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+                            else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                        ),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = badgeText,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(19.dp)
                     )
                 }
-            } else {
-                Icon(
-                    imageVector = Icons.Filled.ChevronRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.size(18.dp)
-                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = title,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = subtitle,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (badgeText != null) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                    ) {
+                        Text(
+                            text = badgeText,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                } else {
+                    Icon(
+                        imageVector = Icons.Filled.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
+
+            Spacer(modifier = Modifier.height(7.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
+            Spacer(modifier = Modifier.height(5.dp))
+
+            // Urdu Title + Clear Meaning & How-to-Use Guide
+            Text(
+                text = urduTitle,
+                fontFamily = AmiriArabicFontFamily,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = TextAlign.End,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Text(
+                text = urduGuide,
+                fontFamily = AmiriArabicFontFamily,
+                fontSize = 11.5.sp,
+                lineHeight = 18.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.End,
+                softWrap = true,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }
